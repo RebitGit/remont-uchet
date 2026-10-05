@@ -1,0 +1,9 @@
+build/
+data/*.db
+*.exe
+*.dll
+*.o
+*.obj
+.vscode/
+.cache/
+compile_commands.json

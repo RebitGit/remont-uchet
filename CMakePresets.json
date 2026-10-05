@@ -1,0 +1,23 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "mingw-vcpkg",
+      "displayName": "MinGW + vcpkg",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-dynamic",
+        "VCPKG_HOST_TRIPLET": "x64-mingw-dynamic",
+        "CMAKE_C_COMPILER": "D:/mingw64/bin/x86_64-w64-mingw32-gcc.exe",
+        "CMAKE_CXX_COMPILER": "D:/mingw64/bin/x86_64-w64-mingw32-g++.exe"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "mingw-vcpkg" }
+  ]
+}
