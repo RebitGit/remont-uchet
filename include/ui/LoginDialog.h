@@ -23,7 +23,6 @@ private:
     wxButton* loginButton_ = nullptr;
     wxCheckBox* rememberCheck_ = nullptr;
     wxStaticBitmap* eyeIcon_ = nullptr;
-    wxBoxSizer* passRowSizer_ = nullptr;
 
     wxBitmap eyeOpen_;
     wxBitmap eyeClosed_;

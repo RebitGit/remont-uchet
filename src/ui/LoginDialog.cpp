@@ -4,8 +4,6 @@
 #include "resources/styles.h"
 #include "resources/utf8.h"
 
-#include <iostream>
-
 namespace remont {
 
 LoginDialog::LoginDialog(wxWindow* parent)
@@ -79,32 +77,42 @@ LoginDialog::LoginDialog(wxWindow* parent)
     cardSizer->Add(makeLabel(utf8::U("Пароль")), 0, wxLEFT | wxRIGHT, 32);
     cardSizer->AddSpacer(6);
 
-    passRowSizer_ = new wxBoxSizer(wxHORIZONTAL);
+    auto* passBox = new wxPanel(card, wxID_ANY, wxDefaultPosition, wxSize(-1, 40),
+                                wxBORDER_SIMPLE);
+    passBox->SetBackgroundColour(*wxWHITE);
 
-    passwordField_ = new wxTextCtrl(card, wxID_ANY, "", wxDefaultPosition,
-                                    wxSize(-1, 38), wxTE_PASSWORD | wxBORDER_SIMPLE);
+    auto* passSizer = new wxBoxSizer(wxHORIZONTAL);
+
+    passwordField_ = new wxTextCtrl(passBox, wxID_ANY, "", wxDefaultPosition,
+                                    wxSize(-1, 32), wxTE_PASSWORD | wxBORDER_NONE);
     passwordField_->SetHint(utf8::U("Введите пароль"));
+    passwordField_->SetBackgroundColour(*wxWHITE);
     passwordField_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 
-    passwordPlain_ = new wxTextCtrl(card, wxID_ANY, "", wxDefaultPosition,
-                                    wxSize(-1, 38), wxBORDER_SIMPLE);
+    passwordPlain_ = new wxTextCtrl(passBox, wxID_ANY, "", wxDefaultPosition,
+                                    wxSize(-1, 32), wxBORDER_NONE);
     passwordPlain_->SetHint(utf8::U("Введите пароль"));
+    passwordPlain_->SetBackgroundColour(*wxWHITE);
     passwordPlain_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     passwordPlain_->Hide();
 
     if (eyeClosed_.IsOk()) {
-        eyeIcon_ = new wxStaticBitmap(card, wxID_ANY, eyeClosed_);
+        eyeIcon_ = new wxStaticBitmap(passBox, wxID_ANY, eyeClosed_);
     } else {
-        eyeIcon_ = new wxStaticBitmap(card, wxID_ANY, wxBitmap(18, 18));
+        eyeIcon_ = new wxStaticBitmap(passBox, wxID_ANY, wxBitmap(18, 18));
     }
     eyeIcon_->SetCursor(wxCursor(wxCURSOR_HAND));
 
-    passRowSizer_->Add(passwordField_, 1, wxEXPAND);
-    passRowSizer_->Add(passwordPlain_, 1, wxEXPAND);
-    passRowSizer_->AddSpacer(8);
-    passRowSizer_->Add(eyeIcon_, 0, wxALIGN_CENTER_VERTICAL);
+    passSizer->AddSpacer(8);
+    passSizer->Add(passwordField_, 1, wxALIGN_CENTER_VERTICAL);
+    passSizer->Add(passwordPlain_, 1, wxALIGN_CENTER_VERTICAL);
+    passSizer->AddSpacer(6);
+    passSizer->Add(eyeIcon_, 0, wxALIGN_CENTER_VERTICAL);
+    passSizer->AddSpacer(8);
 
-    cardSizer->Add(passRowSizer_, 0, wxEXPAND | wxLEFT | wxRIGHT, 32);
+    passBox->SetSizer(passSizer);
+
+    cardSizer->Add(passBox, 0, wxEXPAND | wxLEFT | wxRIGHT, 32);
     cardSizer->AddSpacer(10);
 
     errorPanel_ = new wxPanel(card, wxID_ANY);
@@ -181,30 +189,24 @@ void LoginDialog::onTogglePassword(wxMouseEvent&) {
         passwordField_->Show();
         if (eyeClosed_.IsOk()) eyeIcon_->SetBitmap(eyeClosed_);
     }
-    passwordPlain_->GetParent()->Layout();
+
+    passwordField_->GetParent()->Layout();
 }
 
 void LoginDialog::onLogin(wxCommandEvent&) {
     std::string login    = getLogin().ToStdString();
     std::string password = getPassword().ToStdString();
 
-    std::cout << "[LOGIN] Нажата кнопка: login='" << login
-              << "' password='" << password << "'" << std::endl;
-
     if (login.empty() || password.empty()) {
-        std::cout << "[LOGIN] Пустые поля" << std::endl;
         showError(utf8::U("Заполните все поля"));
         return;
     }
 
     User u;
     if (!AuthService::instance().authenticate(login, password, u)) {
-        std::cout << "[LOGIN] Аутентификация не пройдена" << std::endl;
         showError(utf8::U("Неверный логин или пароль"));
         return;
     }
-
-    std::cout << "[LOGIN] УСПЕХ, user='" << u.login << "'" << std::endl;
 
     user_ = u;
     hideError();

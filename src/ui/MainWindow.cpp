@@ -1,9 +1,12 @@
 #include "ui/MainWindow.h"
 #include "ui/DashboardWidget.h"
+#include "ui/RoundedPanel.h"
 #include "resources/styles.h"
 #include "resources/utf8.h"
 
 #include <wx/statbmp.h>
+#include <wx/dcbuffer.h>
+#include <wx/graphics.h>
 #include <ctime>
 
 namespace remont {
@@ -16,15 +19,10 @@ wxBitmap loadWhiteIcon(const wxString& path, int size) {
         return wxBitmap(size, size);
     }
     img.Rescale(size, size, wxIMAGE_QUALITY_HIGH);
-
-    if (!img.HasAlpha()) {
-        img.InitAlpha();
-    }
-
+    if (!img.HasAlpha()) img.InitAlpha();
     unsigned char* rgb   = img.GetData();
     unsigned char* alpha = img.GetAlpha();
     int pixels = img.GetWidth() * img.GetHeight();
-
     for (int i = 0; i < pixels; ++i) {
         if (alpha[i] > 0) {
             rgb[i * 3 + 0] = 255;
@@ -32,9 +30,87 @@ wxBitmap loadWhiteIcon(const wxString& path, int size) {
             rgb[i * 3 + 2] = 255;
         }
     }
-
     return wxBitmap(img);
 }
+
+class CircleAvatar : public wxPanel {
+public:
+    CircleAvatar(wxWindow* parent, const wxString& text,
+                 const wxColour& bg, const wxColour& fg, int size)
+        : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(size, size)),
+          text_(text), bg_(bg), fg_(fg), size_(size)
+    {
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetBackgroundColour(parent->GetBackgroundColour());
+        SetMinSize(wxSize(size, size));
+        Bind(wxEVT_PAINT, &CircleAvatar::onPaint, this);
+    }
+
+private:
+    void onPaint(wxPaintEvent&) {
+        wxAutoBufferedPaintDC dc(this);
+        dc.SetBackground(wxBrush(GetParent()->GetBackgroundColour()));
+        dc.Clear();
+
+        std::unique_ptr<wxGraphicsContext> gc(wxGraphicsContext::Create(dc));
+        if (!gc) return;
+
+        gc->SetAntialiasMode(wxANTIALIAS_DEFAULT);
+        gc->SetBrush(wxBrush(bg_));
+        gc->SetPen(*wxTRANSPARENT_PEN);
+        gc->DrawEllipse(0, 0, size_, size_);
+
+        gc->SetFont(wxFont(13, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+                           wxFONTWEIGHT_BOLD), fg_);
+        double tw, th;
+        gc->GetTextExtent(text_, &tw, &th);
+        gc->DrawText(text_, (size_ - tw) / 2.0, (size_ - th) / 2.0);
+    }
+
+    wxString text_;
+    wxColour bg_;
+    wxColour fg_;
+    int size_;
+};
+
+class LogoBox : public wxPanel {
+public:
+    LogoBox(wxWindow* parent, int size)
+        : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(size, size)),
+          size_(size)
+    {
+        SetBackgroundStyle(wxBG_STYLE_PAINT);
+        SetBackgroundColour(parent->GetBackgroundColour());
+        SetMinSize(wxSize(size, size));
+
+        icon_ = loadWhiteIcon("resources/icons/cpu.png", 24);
+        Bind(wxEVT_PAINT, &LogoBox::onPaint, this);
+    }
+
+private:
+    void onPaint(wxPaintEvent&) {
+        wxAutoBufferedPaintDC dc(this);
+        dc.SetBackground(wxBrush(GetParent()->GetBackgroundColour()));
+        dc.Clear();
+
+        std::unique_ptr<wxGraphicsContext> gc(wxGraphicsContext::Create(dc));
+        if (!gc) return;
+
+        gc->SetAntialiasMode(wxANTIALIAS_DEFAULT);
+        gc->SetBrush(wxBrush(styles::Primary));
+        gc->SetPen(*wxTRANSPARENT_PEN);
+        gc->DrawRoundedRectangle(0, 0, size_, size_, 10);
+
+        if (icon_.IsOk()) {
+            int ix = (size_ - icon_.GetWidth()) / 2;
+            int iy = (size_ - icon_.GetHeight()) / 2;
+            gc->DrawBitmap(icon_, ix, iy, icon_.GetWidth(), icon_.GetHeight());
+        }
+    }
+
+    int size_;
+    wxBitmap icon_;
+};
 
 }
 
@@ -65,26 +141,23 @@ MainWindow::MainWindow(const User& user)
     SetSizer(root);
     Centre();
     setActiveNav(1001);
+
+    Bind(wxEVT_CLOSE_WINDOW, &MainWindow::onClose, this);
 }
 
-wxPanel* MainWindow::buildNavItem(wxWindow* parent, const wxString& label,
-                                  const wxString& iconPath, int id, bool active)
+MainWindow::~MainWindow() = default;
+
+RoundedPanel* MainWindow::buildNavItem(wxWindow* parent, const wxString& label,
+                                       const wxString& iconPath, int id, bool active)
 {
-    auto* panel = new wxPanel(parent, id, wxDefaultPosition, wxSize(-1, 48));
-    panel->SetBackgroundColour(active ? styles::Primary : styles::Sidebar);
+    auto* panel = new RoundedPanel(parent,
+                                   active ? styles::Primary : styles::Sidebar,
+                                   8, wxSize(-1, 48));
     panel->SetCursor(wxCursor(wxCURSOR_HAND));
-
-    auto* sizer = new wxBoxSizer(wxHORIZONTAL);
-
-    auto* bmp = new wxStaticBitmap(panel, wxID_ANY, loadWhiteIcon(iconPath, 20));
-    sizer->Add(bmp, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 16);
-
-    auto* txt = new wxStaticText(panel, wxID_ANY, label);
-    txt->SetForegroundColour(*wxWHITE);
-    txt->SetFont(wxFont(13, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-    sizer->Add(txt, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 12);
-
-    panel->SetSizer(sizer);
+    panel->SetHoverColour(styles::SidebarHover);
+    panel->SetIcon(loadWhiteIcon(iconPath, 20));
+    panel->SetLabel(label, *wxWHITE, 13);
+    panel->SetActive(active);
 
     panel->Bind(wxEVT_LEFT_UP, [this, id](wxMouseEvent&) {
         wxCommandEvent evt(wxEVT_BUTTON, id);
@@ -102,23 +175,16 @@ wxPanel* MainWindow::buildSidebar() {
 
     auto* logoRow = new wxBoxSizer(wxHORIZONTAL);
 
-    auto* logoBox = new wxPanel(sidebar, wxID_ANY, wxDefaultPosition, wxSize(42, 42));
-    logoBox->SetBackgroundColour(styles::Primary);
-
-    auto* logoSizer = new wxBoxSizer(wxVERTICAL);
-    auto* logoBmp = new wxStaticBitmap(logoBox, wxID_ANY,
-                                       loadWhiteIcon("resources/icons/cpu.png", 24));
-    logoSizer->AddStretchSpacer();
-    logoSizer->Add(logoBmp, 0, wxALIGN_CENTER);
-    logoSizer->AddStretchSpacer();
-    logoBox->SetSizer(logoSizer);
+    auto* logoBox = new LogoBox(sidebar, 42);
 
     auto* nameCol = new wxBoxSizer(wxVERTICAL);
     auto* name = new wxStaticText(sidebar, wxID_ANY, utf8::U("Ремонт-Учёт"));
     name->SetForegroundColour(*wxWHITE);
+    name->SetBackgroundColour(styles::Sidebar);
     name->SetFont(wxFont(15, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
     auto* version = new wxStaticText(sidebar, wxID_ANY, "v1.0.0");
     version->SetForegroundColour(wxColour(0x94, 0xA3, 0xB8));
+    version->SetBackgroundColour(styles::Sidebar);
     version->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     nameCol->Add(name);
     nameCol->Add(version);
@@ -156,57 +222,42 @@ wxPanel* MainWindow::buildSidebar() {
 
     auto* profileRow = new wxBoxSizer(wxHORIZONTAL);
 
-    auto* avatar = new wxPanel(sidebar, wxID_ANY, wxDefaultPosition, wxSize(42, 42));
-    avatar->SetBackgroundColour(wxColour(0x47, 0x55, 0x69));
-    auto* avatarTxt = new wxStaticText(avatar, wxID_ANY, "AD",
-                                       wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER);
-    avatarTxt->SetForegroundColour(*wxWHITE);
-    avatarTxt->SetFont(wxFont(13, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
-    auto* avSizer = new wxBoxSizer(wxVERTICAL);
-    avSizer->AddStretchSpacer();
-    avSizer->Add(avatarTxt, 0, wxALIGN_CENTER);
-    avSizer->AddStretchSpacer();
-    avatar->SetSizer(avSizer);
+    auto* avatar = new CircleAvatar(sidebar, "AD",
+                                    wxColour(0x47, 0x55, 0x69),
+                                    *wxWHITE, 42);
 
     auto* profCol = new wxBoxSizer(wxVERTICAL);
     auto* profRole = new wxStaticText(sidebar, wxID_ANY, utf8::U("Администратор"));
     profRole->SetForegroundColour(*wxWHITE);
+    profRole->SetBackgroundColour(styles::Sidebar);
     profRole->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
     auto* profLogin = new wxStaticText(sidebar, wxID_ANY,
                                        wxString::FromUTF8(user_.login));
     profLogin->SetForegroundColour(wxColour(0x94, 0xA3, 0xB8));
+    profLogin->SetBackgroundColour(styles::Sidebar);
     profLogin->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     profCol->Add(profRole);
     profCol->Add(profLogin);
 
-    auto* gear = new wxStaticText(sidebar, wxID_ANY, "⚙");
-    gear->SetForegroundColour(wxColour(0x94, 0xA3, 0xB8));
-    gear->SetFont(wxFont(14, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    auto* gearPanel = new RoundedPanel(sidebar, styles::Sidebar, 15, wxSize(30, 30));
+    gearPanel->SetCursor(wxCursor(wxCURSOR_HAND));
+    gearPanel->SetHoverColour(styles::SidebarHover);
+    gearPanel->SetIcon(loadWhiteIcon("resources/icons/settings.png", 18));
 
     profileRow->Add(avatar, 0, wxALIGN_CENTER_VERTICAL);
     profileRow->AddSpacer(10);
     profileRow->Add(profCol, 1, wxALIGN_CENTER_VERTICAL);
-    profileRow->Add(gear, 0, wxALIGN_CENTER_VERTICAL);
+    profileRow->Add(gearPanel, 0, wxALIGN_CENTER_VERTICAL);
 
     sizer->Add(profileRow, 0, wxEXPAND | wxLEFT | wxRIGHT, 16);
     sizer->AddSpacer(8);
 
-    auto* logoutPanel = new wxPanel(sidebar, wxID_ANY, wxDefaultPosition, wxSize(-1, 44));
-    logoutPanel->SetBackgroundColour(styles::Sidebar);
+    auto* logoutPanel = new RoundedPanel(sidebar, styles::Sidebar, 8, wxSize(-1, 44));
     logoutPanel->SetCursor(wxCursor(wxCURSOR_HAND));
+    logoutPanel->SetHoverColour(styles::SidebarHover);
+    logoutPanel->SetIcon(loadWhiteIcon("resources/icons/nav_logout.png", 18));
+    logoutPanel->SetLabel(utf8::U("Выйти"), wxColour(0x94, 0xA3, 0xB8), 12);
 
-    auto* logoutSizer = new wxBoxSizer(wxHORIZONTAL);
-
-    auto* logoutBmp = new wxStaticBitmap(logoutPanel, wxID_ANY,
-                                         loadWhiteIcon("resources/icons/nav_logout.png", 18));
-    logoutSizer->Add(logoutBmp, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 16);
-
-    auto* logoutTxt = new wxStaticText(logoutPanel, wxID_ANY, utf8::U("Выйти"));
-    logoutTxt->SetForegroundColour(wxColour(0x94, 0xA3, 0xB8));
-    logoutTxt->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-    logoutSizer->Add(logoutTxt, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
-
-    logoutPanel->SetSizer(logoutSizer);
     logoutPanel->Bind(wxEVT_LEFT_UP, &MainWindow::onLogout, this);
     sizer->Add(logoutPanel, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 16);
 
@@ -249,14 +300,16 @@ wxPanel* MainWindow::buildHeader() {
 void MainWindow::setActiveNav(int id) {
     wxColour active = styles::Primary;
     wxColour normal = styles::Sidebar;
-    navOrders_->SetBackgroundColour(id == 1001 ? active : normal);
-    navWarehouse_->SetBackgroundColour(id == 1002 ? active : normal);
-    navReports_->SetBackgroundColour(id == 1003 ? active : normal);
-    navAdmin_->SetBackgroundColour(id == 1004 ? active : normal);
-    navOrders_->Refresh();
-    navWarehouse_->Refresh();
-    navReports_->Refresh();
-    navAdmin_->Refresh();
+
+    auto setup = [&](RoundedPanel* panel, bool isActive) {
+        panel->SetActive(isActive);
+        panel->SetFillColour(isActive ? active : normal);
+    };
+
+    setup(navOrders_,    id == 1001);
+    setup(navWarehouse_, id == 1002);
+    setup(navReports_,   id == 1003);
+    setup(navAdmin_,     id == 1004);
 }
 
 void MainWindow::onNavClick(wxCommandEvent& event) {
@@ -269,7 +322,12 @@ void MainWindow::onNavClick(wxCommandEvent& event) {
 }
 
 void MainWindow::onLogout(wxEvent&) {
+    logoutRequested_ = true;
     Close();
+}
+
+void MainWindow::onClose(wxCloseEvent& event) {
+    event.Skip();
 }
 
 }

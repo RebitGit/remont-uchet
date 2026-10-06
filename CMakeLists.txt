@@ -21,6 +21,12 @@ add_library(remont_core STATIC
     src/models/Part.cpp
     src/models/PartUsage.cpp
     src/services/AuthService.cpp
+    src/services/OrderService.cpp
+    src/services/WarehouseService.cpp
+    src/repositories/ClientRepository.cpp
+    src/repositories/DeviceRepository.cpp
+    src/repositories/OrderRepository.cpp
+    src/repositories/PartRepository.cpp
 )
 target_include_directories(remont_core PUBLIC include)
 target_link_libraries(remont_core PUBLIC
@@ -34,8 +40,10 @@ add_executable(Remont_Uchet
     src/ui/MainWindow.cpp
     src/ui/DashboardWidget.cpp
     src/ui/RoundedLogo.cpp
+    src/ui/RoundedPanel.cpp
     app.rc
 )
+
 target_link_libraries(Remont_Uchet PRIVATE remont_core wx::core wx::base)
 
 add_custom_command(TARGET Remont_Uchet POST_BUILD

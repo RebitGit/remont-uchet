@@ -11,7 +11,6 @@
 
 #include <filesystem>
 #include <windows.h>
-#include <iostream>
 
 using namespace remont;
 
@@ -34,43 +33,55 @@ public:
         }
         db.execFile(cfg.schemaPath());
 
-        std::string adminHash = remont::AuthService::hashPassword("admin");
-        std::cout << "[MAIN] hashPassword(\"admin\") = " << adminHash << std::endl;
-
         {
-            const char* checkSql = "SELECT COUNT(*) FROM users WHERE login = 'admin';";
+            const char* checkSql =
+                "SELECT password_hash FROM users WHERE login = 'admin' LIMIT 1;";
             sqlite3_stmt* stmt = nullptr;
             sqlite3_prepare_v2(db.handle(), checkSql, -1, &stmt, nullptr);
-            int count = 0;
+            std::string existingHash;
+            bool hasAdmin = false;
             if (sqlite3_step(stmt) == SQLITE_ROW) {
-                count = sqlite3_column_int(stmt, 0);
+                hasAdmin = true;
+                const char* h = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+                existingHash = h ? h : "";
             }
             sqlite3_finalize(stmt);
 
-            std::cout << "[MAIN] admin в БД найден: " << count << " раз" << std::endl;
+            std::string adminHash = remont::AuthService::hashPassword("admin");
 
-            if (count == 0) {
-                std::string insertSql =
-                    "INSERT INTO users(login, password_hash, role, is_active) "
-                    "VALUES('admin', '" + adminHash + "', 'admin', 1);";
-                db.execute(insertSql);
-                std::cout << "[MAIN] admin создан" << std::endl;
+            if (!hasAdmin) {
+                db.execute("INSERT INTO users(login, password_hash, role, is_active) "
+                           "VALUES('admin', '" + adminHash + "', 'admin', 1);");
+            } else if (existingHash != adminHash) {
+                db.execute("UPDATE users SET password_hash = '" + adminHash +
+                           "' WHERE login = 'admin';");
             }
         }
 
+        CallAfter([this]() { showLogin(); });
+        return true;
+    }
+
+    void showLogin() {
         remont::LoginDialog dlg(nullptr);
         if (dlg.ShowModal() != wxID_OK) {
-            return false;
+            ExitMainLoop();
+            return;
         }
 
         remont::User user = dlg.getUser();
-        std::cout << "[MAIN] Вошёл пользователь: '" << user.login
-                  << "' роль=" << static_cast<int>(user.role) << std::endl;
 
         auto* mainWindow = new remont::MainWindow(user);
+        mainWindow->Bind(wxEVT_DESTROY, [this, mainWindow](wxWindowDestroyEvent&) {
+            bool logout = mainWindow->logoutRequested();
+            mainWindow->Destroy();
+            if (logout) {
+                CallAfter([this]() { showLogin(); });
+            } else {
+                ExitMainLoop();
+            }
+        });
         mainWindow->Show();
-
-        return true;
     }
 };
 
