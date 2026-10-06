@@ -1,4 +1,8 @@
 #include "ui/DashboardWidget.h"
+#include "repositories/OrderRepository.h"
+#include "repositories/ClientRepository.h"
+#include "repositories/DeviceRepository.h"
+#include "core/Types.h"
 #include "resources/styles.h"
 #include "resources/utf8.h"
 
@@ -19,17 +23,30 @@ DashboardWidget::DashboardWidget(wxWindow* parent)
     root->AddSpacer(20);
 
     SetSizer(root);
+
+    loadOrders();
 }
 
 void DashboardWidget::buildStats(wxSizer* root) {
+    auto all = OrderRepository::instance().getAll();
+    int total = static_cast<int>(all.size());
+    int inWork = 0, ready = 0, issued = 0;
+    for (auto& o : all) {
+        if (o.status == OrderStatus::Diagnostics ||
+            o.status == OrderStatus::InRepair ||
+            o.status == OrderStatus::WaitingPart) inWork++;
+        if (o.status == OrderStatus::Ready) ready++;
+        if (o.status == OrderStatus::Issued) issued++;
+    }
+
     auto* row = new wxBoxSizer(wxHORIZONTAL);
 
-    struct Stat { const char* label; const char* value; wxColour color; };
+    struct Stat { const char* label; int value; wxColour color; };
     Stat stats[] = {
-        { "Всего заказов",   "24", styles::Primary },
-        { "В работе",        "8",  styles::Warning },
-        { "Готовы к выдаче", "6",  styles::Success },
-        { "Выдано",          "10", styles::Muted   }
+        { "Всего заказов",   total,  styles::Primary },
+        { "В работе",        inWork, styles::Warning },
+        { "Готовы к выдаче", ready,  styles::Success },
+        { "Выдано",          issued, styles::Muted   }
     };
 
     for (auto& s : stats) {
@@ -38,7 +55,7 @@ void DashboardWidget::buildStats(wxSizer* root) {
 
         auto* cardSizer = new wxBoxSizer(wxVERTICAL);
 
-        auto* value = new wxStaticText(card, wxID_ANY, utf8::U(s.value));
+        auto* value = new wxStaticText(card, wxID_ANY, wxString::Format("%d", s.value));
         value->SetFont(wxFont(32, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
         value->SetForegroundColour(s.color);
 
@@ -109,35 +126,35 @@ void DashboardWidget::buildTable(wxSizer* root) {
     table_->SetBackgroundColour(styles::Surface);
     table_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 
-    table_->AppendColumn(utf8::U("№"),            wxLIST_FORMAT_LEFT, 90);
+    table_->AppendColumn(utf8::U("№"),            wxLIST_FORMAT_LEFT, 100);
     table_->AppendColumn(utf8::U("КЛИЕНТ"),       wxLIST_FORMAT_LEFT, 260);
     table_->AppendColumn(utf8::U("УСТРОЙСТВО"),   wxLIST_FORMAT_LEFT, 280);
     table_->AppendColumn(utf8::U("СТАТУС"),       wxLIST_FORMAT_LEFT, 180);
     table_->AppendColumn(utf8::U("ДАТА ПРИЁМА"),  wxLIST_FORMAT_LEFT, 160);
     table_->AppendColumn(utf8::U("ДЕЙСТВИЯ"),     wxLIST_FORMAT_LEFT, 120);
 
-    struct Row { const char* num; const char* client; const char* device; const char* status; const char* date; };
-    Row rows[] = {
-        { "#001", "Иванов Иван Иванович",      "Ноутбук HP Pavilion 15",       "В ремонте",        "28.09.2026" },
-        { "#002", "Петрова Ольга Сергеевна",   "Смартфон Samsung Galaxy A52",  "Принят",           "29.09.2026" },
-        { "#003", "Сидоров Алексей Михайлович","Планшет Apple iPad 10",        "Готов",            "27.09.2026" },
-        { "#004", "Кузнецова Мария Андреевна", "Монитор LG 27UL500",           "Диагностика",      "30.09.2026" },
-        { "#005", "Новиков Дмитрий Олегович",  "Принтер Canon PIXMA",          "Ожидает запчасть", "26.09.2026" },
-        { "#006", "Морозова Екатерина Ивановна","Ноутбук Lenovo IdeaPad 3",    "Выдан",            "25.09.2026" },
-    };
+    root->Add(table_, 1, wxEXPAND | wxLEFT | wxRIGHT, 12);
+}
+
+void DashboardWidget::loadOrders() {
+    if (!table_) return;
+    table_->DeleteAllItems();
+
+    auto orders = OrderRepository::instance().getAll();
 
     long idx = 0;
-    for (auto& r : rows) {
-        long row = table_->InsertItem(idx, utf8::U(r.num));
-        table_->SetItem(row, 1, utf8::U(r.client));
-        table_->SetItem(row, 2, utf8::U(r.device));
-        table_->SetItem(row, 3, utf8::U(r.status));
-        table_->SetItem(row, 4, utf8::U(r.date));
-        table_->SetItem(row, 5, utf8::U("👁   🖨"));
+    for (auto& o : orders) {
+        Client c = ClientRepository::instance().findById(o.clientId);
+        Device d = DeviceRepository::instance().findById(o.deviceId);
+
+        long row = table_->InsertItem(idx, utf8::U(o.orderNumber.c_str()));
+        table_->SetItem(row, 1, utf8::U(c.fullName.c_str()));
+        table_->SetItem(row, 2, utf8::U(d.model.c_str()));
+        table_->SetItem(row, 3, utf8::U(statusToString(o.status).c_str()));
+        table_->SetItem(row, 4, utf8::U(o.receivedAt.c_str()));
+        table_->SetItem(row, 5, utf8::U("👁  🖨"));
         idx++;
     }
-
-    root->Add(table_, 1, wxEXPAND | wxLEFT | wxRIGHT, 12);
 }
 
 }

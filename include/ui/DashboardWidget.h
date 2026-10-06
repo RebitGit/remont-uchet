@@ -12,6 +12,7 @@ private:
     void buildStats(wxSizer* root);
     void buildToolbar(wxSizer* root);
     void buildTable(wxSizer* root);
+    void loadOrders();
 
     wxListCtrl* table_ = nullptr;
     wxTextCtrl* search_ = nullptr;
