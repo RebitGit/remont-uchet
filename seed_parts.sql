@@ -1,0 +1,10 @@
+DELETE FROM parts;
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Матрица 15.6 FHD IPS', 'A001', 5, 4500, 3);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Матрица 13.3 FHD IPS', 'A002', 2, 5200, 3);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('АКБ для Xiaomi Redmi Note 11', 'B001', 8, 1200, 4);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('АКБ для Samsung Galaxy A52', 'B002', 1, 1500, 4);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Термопаста Arctic MX-4 (4г)', 'C001', 15, 320, 5);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Термопаста Halnziye HY-883', 'C002', 3, 180, 5);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Разъём зарядки Type-C', 'D001', 12, 250, 5);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Разъём зарядки micro-USB', 'D002', 6, 120, 5);
+INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Кулер для ноутбука HP Pavilion', 'E001', 2, 1800, 2);

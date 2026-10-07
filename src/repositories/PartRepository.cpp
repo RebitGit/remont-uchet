@@ -95,7 +95,9 @@ bool PartRepository::writeOff(int partId, int quantity) {
     sqlite3_bind_int(stmt, 2, partId);
     sqlite3_bind_int(stmt, 3, quantity);
 
-    bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+    int rc = sqlite3_step(stmt);
+    bool ok = (rc == SQLITE_DONE) && (sqlite3_changes(db) > 0);
+
     sqlite3_finalize(stmt);
     return ok;
 }

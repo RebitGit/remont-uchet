@@ -1,6 +1,7 @@
 #include "ui/LoginDialog.h"
 #include "ui/RoundedLogo.h"
 #include "services/AuthService.h"
+#include "core/ThemeManager.h"
 #include "resources/styles.h"
 #include "resources/utf8.h"
 
@@ -11,7 +12,8 @@ LoginDialog::LoginDialog(wxWindow* parent)
                wxDefaultPosition, wxSize(420, 600),
                wxDEFAULT_DIALOG_STYLE)
 {
-    SetBackgroundColour(styles::Background);
+    auto& tm = ThemeManager::instance();
+    SetBackgroundColour(tm.background());
 
     wxImage eyeOpenImg;
     if (eyeOpenImg.LoadFile("resources/icons/eye.png", wxBITMAP_TYPE_PNG)) {
@@ -28,7 +30,7 @@ LoginDialog::LoginDialog(wxWindow* parent)
     root->AddStretchSpacer(1);
 
     auto* card = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(360, 500));
-    card->SetBackgroundColour(styles::Surface);
+    card->SetBackgroundColour(tm.surface());
 
     auto* cardSizer = new wxBoxSizer(wxVERTICAL);
 
@@ -36,11 +38,13 @@ LoginDialog::LoginDialog(wxWindow* parent)
 
     auto* title = new wxStaticText(card, wxID_ANY, utf8::U("Ремонт-Учёт"));
     title->SetFont(wxFont(22, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
-    title->SetForegroundColour(styles::Text);
+    title->SetForegroundColour(tm.text());
+    title->SetBackgroundColour(tm.surface());
 
     auto* subtitle = new wxStaticText(card, wxID_ANY, utf8::U("Система учёта заказов"));
     subtitle->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-    subtitle->SetForegroundColour(styles::Muted);
+    subtitle->SetForegroundColour(tm.muted());
+    subtitle->SetBackgroundColour(tm.surface());
 
     cardSizer->AddSpacer(28);
     cardSizer->Add(logo, 0, wxALIGN_CENTER);
@@ -54,10 +58,12 @@ LoginDialog::LoginDialog(wxWindow* parent)
         auto* row = new wxBoxSizer(wxHORIZONTAL);
         auto* txt = new wxStaticText(card, wxID_ANY, text);
         txt->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-        txt->SetForegroundColour(wxColour(0x37, 0x41, 0x51));
+        txt->SetForegroundColour(tm.text());
+        txt->SetBackgroundColour(tm.surface());
         auto* star = new wxStaticText(card, wxID_ANY, " *");
         star->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-        star->SetForegroundColour(styles::Danger);
+        star->SetForegroundColour(tm.danger());
+        star->SetBackgroundColour(tm.surface());
         row->Add(txt, 0, wxALIGN_CENTER_VERTICAL);
         row->Add(star, 0, wxALIGN_CENTER_VERTICAL);
         return row;
@@ -69,7 +75,8 @@ LoginDialog::LoginDialog(wxWindow* parent)
     loginField_ = new wxTextCtrl(card, wxID_ANY, "", wxDefaultPosition,
                                  wxSize(-1, 38), wxBORDER_SIMPLE);
     loginField_->SetHint(utf8::U("Введите логин"));
-    loginField_->SetBackgroundColour(*wxWHITE);
+    loginField_->SetBackgroundColour(tm.surface());
+    loginField_->SetForegroundColour(tm.text());
     loginField_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     cardSizer->Add(loginField_, 0, wxEXPAND | wxLEFT | wxRIGHT, 32);
     cardSizer->AddSpacer(14);
@@ -79,20 +86,22 @@ LoginDialog::LoginDialog(wxWindow* parent)
 
     auto* passBox = new wxPanel(card, wxID_ANY, wxDefaultPosition, wxSize(-1, 40),
                                 wxBORDER_SIMPLE);
-    passBox->SetBackgroundColour(*wxWHITE);
+    passBox->SetBackgroundColour(tm.surface());
 
     auto* passSizer = new wxBoxSizer(wxHORIZONTAL);
 
     passwordField_ = new wxTextCtrl(passBox, wxID_ANY, "", wxDefaultPosition,
                                     wxSize(-1, 32), wxTE_PASSWORD | wxBORDER_NONE);
     passwordField_->SetHint(utf8::U("Введите пароль"));
-    passwordField_->SetBackgroundColour(*wxWHITE);
+    passwordField_->SetBackgroundColour(tm.surface());
+    passwordField_->SetForegroundColour(tm.text());
     passwordField_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 
     passwordPlain_ = new wxTextCtrl(passBox, wxID_ANY, "", wxDefaultPosition,
                                     wxSize(-1, 32), wxBORDER_NONE);
     passwordPlain_->SetHint(utf8::U("Введите пароль"));
-    passwordPlain_->SetBackgroundColour(*wxWHITE);
+    passwordPlain_->SetBackgroundColour(tm.surface());
+    passwordPlain_->SetForegroundColour(tm.text());
     passwordPlain_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     passwordPlain_->Hide();
 
@@ -120,6 +129,7 @@ LoginDialog::LoginDialog(wxWindow* parent)
     auto* errSizer = new wxBoxSizer(wxHORIZONTAL);
     errorLabel_ = new wxStaticText(errorPanel_, wxID_ANY, "");
     errorLabel_->SetForegroundColour(wxColour(0x99, 0x1B, 0x1B));
+    errorLabel_->SetBackgroundColour(wxColour(0xFE, 0xF2, 0xF2));
     errorLabel_->SetFont(wxFont(9, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     errSizer->Add(errorLabel_, 1, wxALL, 8);
     errorPanel_->SetSizer(errSizer);
@@ -128,7 +138,8 @@ LoginDialog::LoginDialog(wxWindow* parent)
     cardSizer->AddSpacer(8);
 
     rememberCheck_ = new wxCheckBox(card, wxID_ANY, utf8::U("Запомнить меня"));
-    rememberCheck_->SetForegroundColour(wxColour(0x37, 0x41, 0x51));
+    rememberCheck_->SetForegroundColour(tm.text());
+    rememberCheck_->SetBackgroundColour(tm.surface());
     rememberCheck_->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     cardSizer->Add(rememberCheck_, 0, wxLEFT | wxRIGHT, 32);
     cardSizer->AddSpacer(14);
@@ -136,7 +147,7 @@ LoginDialog::LoginDialog(wxWindow* parent)
     loginButton_ = new wxButton(card, wxID_ANY, utf8::U("Войти"),
                                 wxDefaultPosition, wxSize(-1, 40),
                                 wxBORDER_NONE);
-    loginButton_->SetBackgroundColour(styles::Primary);
+    loginButton_->SetBackgroundColour(tm.primary());
     loginButton_->SetForegroundColour(*wxWHITE);
     loginButton_->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
     cardSizer->Add(loginButton_, 0, wxEXPAND | wxLEFT | wxRIGHT, 32);
@@ -148,7 +159,7 @@ LoginDialog::LoginDialog(wxWindow* parent)
     root->AddStretchSpacer(1);
 
     SetSizer(root);
-    Centre();
+    CentreOnScreen();
 
     loginButton_->Bind(wxEVT_BUTTON, &LoginDialog::onLogin, this);
     eyeIcon_->Bind(wxEVT_LEFT_UP, &LoginDialog::onTogglePassword, this);
@@ -194,8 +205,8 @@ void LoginDialog::onTogglePassword(wxMouseEvent&) {
 }
 
 void LoginDialog::onLogin(wxCommandEvent&) {
-    std::string login    = getLogin().ToStdString();
-    std::string password = getPassword().ToStdString();
+    std::string login    = std::string(getLogin().ToUTF8().data());
+    std::string password = std::string(getPassword().ToUTF8().data());
 
     if (login.empty() || password.empty()) {
         showError(utf8::U("Заполните все поля"));

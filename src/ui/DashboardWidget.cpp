@@ -3,6 +3,7 @@
 #include "repositories/ClientRepository.h"
 #include "repositories/DeviceRepository.h"
 #include "core/Types.h"
+#include "core/ThemeManager.h"
 #include "resources/styles.h"
 #include "resources/utf8.h"
 
@@ -11,10 +12,12 @@ namespace remont {
 DashboardWidget::DashboardWidget(wxWindow* parent)
     : wxPanel(parent, wxID_ANY)
 {
-    SetBackgroundColour(styles::Background);
+    auto& tm = ThemeManager::instance();
+    SetBackgroundColour(tm.background());
 
     auto* root = new wxBoxSizer(wxVERTICAL);
     root->AddSpacer(20);
+
     buildStats(root);
     root->AddSpacer(20);
     buildToolbar(root);
@@ -23,11 +26,33 @@ DashboardWidget::DashboardWidget(wxWindow* parent)
     root->AddSpacer(20);
 
     SetSizer(root);
+    loadOrders();
+}
 
+void DashboardWidget::reload() {
+    DestroyChildren();
+
+    auto& tm = ThemeManager::instance();
+    SetBackgroundColour(tm.background());
+
+    auto* root = new wxBoxSizer(wxVERTICAL);
+    root->AddSpacer(20);
+
+    buildStats(root);
+    root->AddSpacer(20);
+    buildToolbar(root);
+    root->AddSpacer(8);
+    buildTable(root);
+    root->AddSpacer(20);
+
+    SetSizer(root);
+    Layout();
     loadOrders();
 }
 
 void DashboardWidget::buildStats(wxSizer* root) {
+    auto& tm = ThemeManager::instance();
+
     auto all = OrderRepository::instance().getAll();
     int total = static_cast<int>(all.size());
     int inWork = 0, ready = 0, issued = 0;
@@ -43,25 +68,27 @@ void DashboardWidget::buildStats(wxSizer* root) {
 
     struct Stat { const char* label; int value; wxColour color; };
     Stat stats[] = {
-        { "Всего заказов",   total,  styles::Primary },
-        { "В работе",        inWork, styles::Warning },
-        { "Готовы к выдаче", ready,  styles::Success },
-        { "Выдано",          issued, styles::Muted   }
+        { "Всего заказов",   total,  tm.primary() },
+        { "В работе",        inWork, tm.warning() },
+        { "Готовы к выдаче", ready,  tm.success() },
+        { "Выдано",          issued, tm.muted()   }
     };
 
     for (auto& s : stats) {
         auto* card = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 130));
-        card->SetBackgroundColour(styles::Surface);
+        card->SetBackgroundColour(tm.surface());
 
         auto* cardSizer = new wxBoxSizer(wxVERTICAL);
 
         auto* value = new wxStaticText(card, wxID_ANY, wxString::Format("%d", s.value));
-        value->SetFont(wxFont(32, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+        value->SetFont(wxFont(tm.fontSizeTitle() + 8, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
         value->SetForegroundColour(s.color);
+        value->SetBackgroundColour(tm.surface());
 
         auto* label = new wxStaticText(card, wxID_ANY, utf8::U(s.label));
-        label->SetForegroundColour(styles::Muted);
-        label->SetFont(wxFont(13, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+        label->SetForegroundColour(tm.muted());
+        label->SetBackgroundColour(tm.surface());
+        label->SetFont(wxFont(tm.fontSizeSmall(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 
         cardSizer->AddSpacer(16);
         cardSizer->Add(value, 0, wxLEFT | wxRIGHT, 20);
@@ -76,17 +103,23 @@ void DashboardWidget::buildStats(wxSizer* root) {
 }
 
 void DashboardWidget::buildToolbar(wxSizer* root) {
+    auto& tm = ThemeManager::instance();
+
     auto* bar = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 72));
-    bar->SetBackgroundColour(styles::Surface);
+    bar->SetBackgroundColour(tm.surface());
 
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
 
     search_ = new wxTextCtrl(bar, wxID_ANY, "", wxDefaultPosition, wxSize(300, 36));
     search_->SetHint(utf8::U("Поиск по заказам..."));
-    search_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    search_->SetFont(wxFont(tm.fontSizeSmall(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    search_->SetBackgroundColour(tm.surface());
+    search_->SetForegroundColour(tm.text());
 
     auto* statusFilter = new wxChoice(bar, wxID_ANY, wxDefaultPosition, wxSize(200, 36));
-    statusFilter->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    statusFilter->SetFont(wxFont(tm.fontSizeSmall(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    statusFilter->SetBackgroundColour(tm.surface());
+    statusFilter->SetForegroundColour(tm.text());
     statusFilter->Append(utf8::U("Все"));
     statusFilter->Append(utf8::U("Принят"));
     statusFilter->Append(utf8::U("Диагностика"));
@@ -99,16 +132,20 @@ void DashboardWidget::buildToolbar(wxSizer* root) {
     auto* exportBtn = new wxButton(bar, wxID_ANY, utf8::U("Экспорт"),
                                    wxDefaultPosition, wxSize(120, 36),
                                    wxBORDER_NONE);
-    exportBtn->SetBackgroundColour(styles::Surface);
-    exportBtn->SetForegroundColour(styles::Text);
-    exportBtn->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    exportBtn->SetBackgroundColour(tm.surface());
+    exportBtn->SetForegroundColour(tm.text());
+    exportBtn->SetFont(wxFont(tm.fontSizeSmall(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 
     auto* newOrderBtn = new wxButton(bar, wxID_ANY, utf8::U("+ Новый заказ"),
                                      wxDefaultPosition, wxSize(170, 36),
                                      wxBORDER_NONE);
-    newOrderBtn->SetBackgroundColour(styles::Primary);
+    newOrderBtn->SetBackgroundColour(tm.primary());
     newOrderBtn->SetForegroundColour(*wxWHITE);
-    newOrderBtn->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+    newOrderBtn->SetFont(wxFont(tm.fontSizeSmall(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+
+    newOrderBtn->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+        if (onNewOrder_) onNewOrder_();
+    });
 
     sizer->Add(search_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 16);
     sizer->Add(statusFilter, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 12);
@@ -121,10 +158,13 @@ void DashboardWidget::buildToolbar(wxSizer* root) {
 }
 
 void DashboardWidget::buildTable(wxSizer* root) {
+    auto& tm = ThemeManager::instance();
+
     table_ = new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(-1, 500),
                             wxLC_REPORT | wxBORDER_NONE);
-    table_->SetBackgroundColour(styles::Surface);
-    table_->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    table_->SetBackgroundColour(tm.surface());
+    table_->SetForegroundColour(tm.text());
+    table_->SetFont(wxFont(tm.fontSizeSmall(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
 
     table_->AppendColumn(utf8::U("№"),            wxLIST_FORMAT_LEFT, 100);
     table_->AppendColumn(utf8::U("КЛИЕНТ"),       wxLIST_FORMAT_LEFT, 260);
@@ -138,6 +178,8 @@ void DashboardWidget::buildTable(wxSizer* root) {
 
 void DashboardWidget::loadOrders() {
     if (!table_) return;
+
+    auto& tm = ThemeManager::instance();
     table_->DeleteAllItems();
 
     auto orders = OrderRepository::instance().getAll();
@@ -155,6 +197,10 @@ void DashboardWidget::loadOrders() {
         table_->SetItem(row, 5, utf8::U("👁  🖨"));
         idx++;
     }
+
+    table_->SetTextColour(tm.text());
+    table_->SetBackgroundColour(tm.surface());
+    table_->Refresh();
 }
 
 }

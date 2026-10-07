@@ -1,5 +1,6 @@
 #include "core/DatabaseManager.h"
 #include "core/ConfigManager.h"
+#include "core/ThemeManager.h"
 #include "services/AuthService.h"
 #include "ui/LoginDialog.h"
 #include "ui/MainWindow.h"
@@ -11,6 +12,7 @@
 
 #include <filesystem>
 #include <windows.h>
+#include <iostream>
 
 using namespace remont;
 
@@ -47,95 +49,138 @@ static void seedDemoData(remont::DatabaseManager& db) {
 
     const char* orders[] = {
         "INSERT INTO orders(order_number, client_id, device_id, user_id, status, description, total_cost) "
-        "VALUES('ORD-2026-0001', 1, 1, 1, 'В ремонте', 'Не включается, не заряжается аккумулятор.', 3500);",
+        "VALUES('#1', 1, 1, 1, 'В ремонте', 'Не включается, не заряжается аккумулятор.', 3500);",
 
         "INSERT INTO orders(order_number, client_id, device_id, user_id, status, description, total_cost) "
-        "VALUES('ORD-2026-0002', 2, 2, 1, 'Принят', 'Разбит экран, не реагирует на касания.', 0);",
+        "VALUES('#2', 2, 2, 1, 'Принят', 'Разбит экран, не реагирует на касания.', 0);",
 
         "INSERT INTO orders(order_number, client_id, device_id, user_id, status, description, total_cost) "
-        "VALUES('ORD-2026-0003', 3, 3, 1, 'Готов', 'Не держит заряд, быстро разряжается.', 2800);",
+        "VALUES('#3', 3, 3, 1, 'Готов', 'Не держит заряд, быстро разряжается.', 2800);",
 
         "INSERT INTO orders(order_number, client_id, device_id, user_id, status, description, total_cost) "
-        "VALUES('ORD-2026-0004', 4, 4, 1, 'Диагностика', 'Нет изображения, подсветка работает.', 0);",
+        "VALUES('#4', 4, 4, 1, 'Диагностика', 'Нет изображения, подсветка работает.', 0);",
 
         "INSERT INTO orders(order_number, client_id, device_id, user_id, status, description, total_cost) "
-        "VALUES('ORD-2026-0005', 5, 5, 1, 'Ожидает запчасть', 'Замятие бумаги, требуется замена ролика.', 1500);",
+        "VALUES('#5', 5, 5, 1, 'Ожидает запчасть', 'Замятие бумаги, требуется замена ролика.', 1500);",
 
         "INSERT INTO orders(order_number, client_id, device_id, user_id, status, description, total_cost) "
-        "VALUES('ORD-2026-0006', 6, 6, 1, 'Выдан', 'Замена клавиатуры, отремонтирован.', 4200);"
+        "VALUES('#6', 6, 6, 1, 'Выдан', 'Замена клавиатуры, отремонтирован.', 4200);"
     };
     for (auto sql : orders) db.execute(sql);
+
+    const char* parts[] = {
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Матрица 15.6 FHD IPS', 'A001', 5, 4500, 3);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Матрица 13.3 FHD IPS', 'A002', 2, 5200, 3);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('АКБ для Xiaomi Redmi Note 11', 'B001', 8, 1200, 4);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('АКБ для Samsung Galaxy A52', 'B002', 1, 1500, 4);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Термопаста Arctic MX-4 (4г)', 'C001', 15, 320, 5);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Термопаста Halnziye HY-883', 'C002', 3, 180, 5);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Разъём зарядки Type-C', 'D001', 12, 250, 5);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Разъём зарядки micro-USB', 'D002', 6, 120, 5);",
+        "INSERT INTO parts(name, article, quantity, price, min_quantity) VALUES('Кулер для ноутбука HP Pavilion', 'E001', 2, 1800, 2);"
+    };
+    for (auto sql : parts) db.execute(sql);
 }
 
 class RemontApp : public wxApp {
 public:
-    bool OnInit() override {
-        SetConsoleOutputCP(CP_UTF8);
-        wxInitAllImageHandlers();
+    bool OnInit() override;
+    void showLogin();
+    void openMainWindow(const remont::User& user);
 
-        auto& cfg = remont::ConfigManager::instance();
-        fs::create_directories(fs::path(cfg.dbPath()).parent_path());
-
-        auto& db = remont::DatabaseManager::instance();
-        if (!db.open(cfg.dbPath())) {
-            wxMessageBox(utf8::U("Не удалось открыть БД"),
-                         utf8::U("Ошибка"), wxOK | wxICON_ERROR);
-            return false;
-        }
-        db.execFile(cfg.schemaPath());
-
-        {
-            const char* checkSql =
-                "SELECT password_hash FROM users WHERE login = 'admin' LIMIT 1;";
-            sqlite3_stmt* stmt = nullptr;
-            sqlite3_prepare_v2(db.handle(), checkSql, -1, &stmt, nullptr);
-            std::string existingHash;
-            bool hasAdmin = false;
-            if (sqlite3_step(stmt) == SQLITE_ROW) {
-                hasAdmin = true;
-                const char* h = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-                existingHash = h ? h : "";
-            }
-            sqlite3_finalize(stmt);
-
-            std::string adminHash = remont::AuthService::hashPassword("admin");
-
-            if (!hasAdmin) {
-                db.execute("INSERT INTO users(login, password_hash, role, is_active) "
-                           "VALUES('admin', '" + adminHash + "', 'admin', 1);");
-            } else if (existingHash != adminHash) {
-                db.execute("UPDATE users SET password_hash = '" + adminHash +
-                           "' WHERE login = 'admin';");
-            }
-        }
-
-        seedDemoData(db);
-
-        CallAfter([this]() { showLogin(); });
-        return true;
-    }
-
-    void showLogin() {
-        remont::LoginDialog dlg(nullptr);
-        if (dlg.ShowModal() != wxID_OK) {
-            ExitMainLoop();
-            return;
-        }
-
-        remont::User user = dlg.getUser();
-
-        auto* mainWindow = new remont::MainWindow(user);
-        mainWindow->Bind(wxEVT_DESTROY, [this, mainWindow](wxWindowDestroyEvent&) {
-            bool logout = mainWindow->logoutRequested();
-            mainWindow->Destroy();
-            if (logout) {
-                CallAfter([this]() { showLogin(); });
-            } else {
-                ExitMainLoop();
-            }
-        });
-        mainWindow->Show();
-    }
+private:
+    wxFrame* holderFrame_ = nullptr;
 };
+
+bool RemontApp::OnInit() {
+    SetConsoleOutputCP(CP_UTF8);
+    wxInitAllImageHandlers();
+
+    std::cerr << "[APP] OnInit start\n";
+    remont::ThemeManager::instance().load();
+    std::cerr << "[APP] ThemeManager loaded\n";
+
+    auto& cfg = remont::ConfigManager::instance();
+    fs::create_directories(fs::path(cfg.dbPath()).parent_path());
+
+    auto& db = remont::DatabaseManager::instance();
+    if (!db.open(cfg.dbPath())) {
+        wxMessageBox(utf8::U("Не удалось открыть БД"),
+                     utf8::U("Ошибка"), wxOK | wxICON_ERROR);
+        return false;
+    }
+    db.execFile(cfg.schemaPath());
+
+    {
+        const char* checkSql =
+            "SELECT password_hash FROM users WHERE login = 'admin' LIMIT 1;";
+        sqlite3_stmt* stmt = nullptr;
+        sqlite3_prepare_v2(db.handle(), checkSql, -1, &stmt, nullptr);
+        std::string existingHash;
+        bool hasAdmin = false;
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            hasAdmin = true;
+            const char* h = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            existingHash = h ? h : "";
+        }
+        sqlite3_finalize(stmt);
+
+        std::string adminHash = remont::AuthService::hashPassword("admin");
+
+        if (!hasAdmin) {
+            db.execute("INSERT INTO users(login, password_hash, role, is_active) "
+                       "VALUES('admin', '" + adminHash + "', 'admin', 1);");
+        } else if (existingHash != adminHash) {
+            db.execute("UPDATE users SET password_hash = '" + adminHash +
+                       "' WHERE login = 'admin';");
+        }
+    }
+
+    seedDemoData(db);
+
+    holderFrame_ = new wxFrame(nullptr, wxID_ANY, "holder",
+                               wxDefaultPosition, wxSize(1, 1));
+    holderFrame_->Hide();
+
+    CallAfter([this]() { showLogin(); });
+    return true;
+}
+
+void RemontApp::showLogin() {
+    remont::LoginDialog dlg(holderFrame_);
+    if (dlg.ShowModal() != wxID_OK) {
+        ExitMainLoop();
+        return;
+    }
+
+    remont::User user = dlg.getUser();
+    openMainWindow(user);
+}
+
+void RemontApp::openMainWindow(const remont::User& user) {
+    std::cerr << "[APP] openMainWindow, dark="
+              << (remont::ThemeManager::instance().isDark() ? "yes" : "no") << "\n";
+
+    auto* mainWindow = new remont::MainWindow(user);
+
+    mainWindow->Bind(wxEVT_CLOSE_WINDOW,
+                     [this, mainWindow, user](wxCloseEvent& e) {
+        bool logout = mainWindow->logoutRequested();
+        bool themeChanged = mainWindow->themeChanged();
+
+        e.Skip();
+        mainWindow->Destroy();
+
+        if (themeChanged) {
+            CallAfter([this, user]() { openMainWindow(user); });
+        } else if (logout) {
+            CallAfter([this]() { showLogin(); });
+        } else {
+            ExitMainLoop();
+        }
+    });
+
+    mainWindow->Show();
+}
 
 wxIMPLEMENT_APP(RemontApp);

@@ -2,6 +2,8 @@
 #include "repositories/ClientRepository.h"
 #include "repositories/DeviceRepository.h"
 #include "repositories/OrderRepository.h"
+#include "pdf/PDFGenerator.h"
+#include "core/ConfigManager.h"
 #include "core/Logger.h"
 
 namespace remont {
@@ -57,6 +59,24 @@ bool OrderService::changeStatus(int orderId, OrderStatus newStatus) {
     bool ok = OrderRepository::instance().updateStatus(orderId, newStatus);
     if (ok) {
         Logger::instance().log(0, "Смена статуса: " + statusToString(newStatus),
+                               "order", orderId);
+    }
+    return ok;
+}
+
+bool OrderService::printAcceptanceAct(int orderId, const std::string& outputPath) {
+    Order order = OrderRepository::instance().findById(orderId);
+    if (order.id == 0) return false;
+
+    Client client = ClientRepository::instance().findById(order.clientId);
+    Device device = DeviceRepository::instance().findById(order.deviceId);
+
+    bool ok = PDFGenerator::instance().generateAcceptanceAct(
+        order, client, device, outputPath,
+        ConfigManager::instance().fontPath());
+
+    if (ok) {
+        Logger::instance().log(0, "Печать акта для заказа " + order.orderNumber,
                                "order", orderId);
     }
     return ok;
