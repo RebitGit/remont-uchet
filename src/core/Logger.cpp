@@ -20,11 +20,26 @@ void Logger::log(int userId, const std::string& action,
         std::cerr << "Logger: prepare failed\n";
         return;
     }
-    sqlite3_bind_int(stmt, 1, userId);
+
+    if (userId > 0) {
+        sqlite3_bind_int(stmt, 1, userId);
+    } else {
+        sqlite3_bind_null(stmt, 1);
+    }
+
     sqlite3_bind_text(stmt, 2, action.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, entityType.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 4, entityId);
-    sqlite3_step(stmt);
+
+    if (entityId > 0) {
+        sqlite3_bind_int(stmt, 4, entityId);
+    } else {
+        sqlite3_bind_null(stmt, 4);
+    }
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        std::cerr << "Logger: insert failed: " << sqlite3_errmsg(DatabaseManager::instance().handle()) << "\n";
+    }
     sqlite3_finalize(stmt);
 }
 

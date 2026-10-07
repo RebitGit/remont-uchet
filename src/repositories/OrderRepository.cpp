@@ -1,7 +1,6 @@
 #include "repositories/OrderRepository.h"
 #include "core/DatabaseManager.h"
 #include <sqlite3.h>
-#include <ctime>
 #include <sstream>
 #include <iomanip>
 
@@ -13,12 +12,25 @@ OrderRepository& OrderRepository::instance() {
 }
 
 std::string OrderRepository::generateNumber() {
-    std::time_t t = std::time(nullptr);
-    std::tm* tm = std::localtime(&t);
+    sqlite3* db = DatabaseManager::instance().handle();
+    if (!db) return "#1";
+
+    const char* sql = "SELECT COUNT(*) FROM orders;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return "#1";
+    }
+
+    int count = 0;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        count = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+
+    int next = count + 1;
+
     std::ostringstream os;
-    os << "ORD-" << (tm->tm_year + 1900) << "-"
-       << std::setw(4) << std::setfill('0')
-       << (tm->tm_yday * 24 + tm->tm_hour);
+    os << "#" << next;
     return os.str();
 }
 

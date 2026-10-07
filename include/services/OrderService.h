@@ -20,6 +20,8 @@ public:
 
     bool changeStatus(int orderId, OrderStatus newStatus);
 
+    bool printAcceptanceAct(int orderId, const std::string& outputPath);
+
 private:
     OrderService() = default;
 };

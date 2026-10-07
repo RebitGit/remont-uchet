@@ -14,9 +14,11 @@ add_library(remont_core STATIC
     src/core/DatabaseManager.cpp
     src/core/ConfigManager.cpp
     src/core/Logger.cpp
+    src/core/ThemeManager.cpp
     src/models/User.cpp
     src/models/Client.cpp
     src/models/Device.cpp
+    src/pdf/PDFGenerator.cpp
     src/models/Order.cpp
     src/models/Part.cpp
     src/models/PartUsage.cpp
@@ -39,6 +41,13 @@ add_executable(Remont_Uchet
     src/ui/LoginDialog.cpp
     src/ui/MainWindow.cpp
     src/ui/DashboardWidget.cpp
+    src/ui/WarehouseWidget.cpp
+    src/ui/NewOrderWidget.cpp
+    src/ui/PartFormDialog.cpp
+    src/ui/ClickableListCtrl.cpp
+    src/ui/SettingsDialog.cpp
+    src/ui/AdminWidget.cpp
+    src/ui/ReportsWidget.cpp
     src/ui/RoundedLogo.cpp
     src/ui/RoundedPanel.cpp
     app.rc
@@ -51,3 +60,6 @@ add_custom_command(TARGET Remont_Uchet POST_BUILD
         ${CMAKE_SOURCE_DIR}/resources
         $<TARGET_FILE_DIR:Remont_Uchet>/resources
 )
+
+enable_testing()
+add_subdirectory(tests)

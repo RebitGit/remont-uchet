@@ -1,5 +1,6 @@
 #include "services/AuthService.h"
 #include "core/DatabaseManager.h"
+#include "core/Logger.h"
 #include <sqlite3.h>
 #include <sstream>
 #include <iomanip>
@@ -80,6 +81,8 @@ bool AuthService::authenticate(const std::string& login,
 
             ok = true;
             std::cout << "[AUTH] УСПЕХ" << std::endl;
+
+            Logger::instance().log(outUser.id, "Вход в систему", "user", outUser.id);
         } else {
             std::cout << "[AUTH] ОТКАЗ: "
                       << (isActive ? "хеш не совпал" : "пользователь отключён")

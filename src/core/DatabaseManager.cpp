@@ -21,6 +21,7 @@ bool DatabaseManager::open(const std::string& path) {
         return false;
     }
     execute("PRAGMA foreign_keys = ON;");
+    execute("PRAGMA encoding = 'UTF-8';");
     return true;
 }
 
