@@ -1,14 +1,15 @@
 #include "ui/NewOrderWidget.h"
 #include "services/OrderService.h"
+#include "core/DatabaseManager.h"
 #include "core/ThemeManager.h"
 #include "resources/styles.h"
 #include "resources/utf8.h"
-#include "services/OrderService.h"
+
 #include <wx/filename.h>
 #include <wx/stdpaths.h>
-#include <algorithm>
-
 #include <wx/scrolwin.h>
+#include <sqlite3.h>
+#include <algorithm>
 
 namespace remont {
 
@@ -45,6 +46,47 @@ NewOrderWidget::NewOrderWidget(wxWindow* parent, const User& user)
 
     outer->Add(scroll, 1, wxEXPAND);
     SetSizer(outer);
+
+    loadMasters();
+}
+
+void NewOrderWidget::loadMasters() {
+    if (!masterChoice_) return;
+
+    masterChoice_->Clear();
+    masterIds_.clear();
+
+    masterChoice_->Append(utf8::U("Не назначен"));
+    masterIds_.push_back(0);
+
+    sqlite3* db = DatabaseManager::instance().handle();
+    if (!db) {
+        masterChoice_->SetSelection(0);
+        return;
+    }
+
+    const char* sql =
+        "SELECT id, login FROM users "
+        "WHERE role = 'master' AND is_active = 1 "
+        "ORDER BY login;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            int id = sqlite3_column_int(stmt, 0);
+            const char* login = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            if (login && *login) {
+                masterIds_.push_back(id);
+                masterChoice_->Append(wxString::FromUTF8(login));
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    masterChoice_->SetSelection(0);
+}
+
+void NewOrderWidget::reload() {
+    loadMasters();
 }
 
 void NewOrderWidget::reset() {
@@ -55,7 +97,7 @@ void NewOrderWidget::reset() {
     if (modelField_) modelField_->Clear();
     if (serialField_) serialField_->Clear();
     if (descriptionField_) descriptionField_->Clear();
-    if (costField_) costField_->Clear();
+    if (costField_) costField_->SetValue("0");
     if (masterChoice_) masterChoice_->SetSelection(0);
     if (errorPanel_) errorPanel_->Hide();
     Layout();
@@ -64,38 +106,34 @@ void NewOrderWidget::reset() {
 wxPanel* NewOrderWidget::buildBreadcrumb(wxSizer* root, wxWindow* parent) {
     auto& tm = ThemeManager::instance();
 
-    auto* bar = new wxPanel(parent, wxID_ANY);
-    bar->SetBackgroundColour(tm.background());
+    auto* row = new wxBoxSizer(wxHORIZONTAL);
 
-    auto* sizer = new wxBoxSizer(wxHORIZONTAL);
-
-    auto* ordersLink = new wxStaticText(bar, wxID_ANY, utf8::U("Заказы"));
+    auto* ordersLink = new wxStaticText(parent, wxID_ANY, utf8::U("Заказы"));
     ordersLink->SetForegroundColour(tm.primary());
     ordersLink->SetBackgroundColour(tm.background());
-    ordersLink->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    ordersLink->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     ordersLink->SetCursor(wxCursor(wxCURSOR_HAND));
 
     ordersLink->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
         wxCommandEvent evt(wxEVT_BUTTON, 2001);
-        GetParent()->GetEventHandler()->ProcessEvent(evt);
+        wxWindow::GetParent()->GetEventHandler()->ProcessEvent(evt);
     });
 
-    auto* sep = new wxStaticText(bar, wxID_ANY, "  /  ");
+    auto* sep = new wxStaticText(parent, wxID_ANY, "  /  ");
     sep->SetForegroundColour(tm.muted());
     sep->SetBackgroundColour(tm.background());
 
-    auto* current = new wxStaticText(bar, wxID_ANY, utf8::U("Новый заказ"));
+    auto* current = new wxStaticText(parent, wxID_ANY, utf8::U("Новый заказ"));
     current->SetForegroundColour(tm.muted());
     current->SetBackgroundColour(tm.background());
-    current->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+    current->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
 
-    sizer->Add(ordersLink, 0, wxALIGN_CENTER_VERTICAL);
-    sizer->Add(sep, 0, wxALIGN_CENTER_VERTICAL);
-    sizer->Add(current, 0, wxALIGN_CENTER_VERTICAL);
+    row->Add(ordersLink, 0, wxALIGN_CENTER_VERTICAL);
+    row->Add(sep, 0, wxALIGN_CENTER_VERTICAL);
+    row->Add(current, 0, wxALIGN_CENTER_VERTICAL);
 
-    bar->SetSizer(sizer);
-    root->Add(bar, 0, wxEXPAND | wxLEFT | wxRIGHT, 32);
-    return bar;
+    root->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT, 32);
+    return nullptr;
 }
 
 wxPanel* NewOrderWidget::buildClientCard(wxSizer* root, wxWindow* parent) {
@@ -298,7 +336,7 @@ wxPanel* NewOrderWidget::buildExtraCard(wxSizer* root, wxWindow* parent) {
     auto* row = new wxBoxSizer(wxHORIZONTAL);
 
     auto* costSizer = new wxBoxSizer(wxVERTICAL);
-    auto* costLabel = new wxStaticText(card, wxID_ANY, utf8::U("Предварительная стоимость (₽)"));
+    auto* costLabel = new wxStaticText(card, wxID_ANY, utf8::U("Предварительная стоимость (руб.)"));
     costLabel->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     costLabel->SetForegroundColour(tm.muted());
     costLabel->SetBackgroundColour(tm.surface());
@@ -409,11 +447,23 @@ bool NewOrderWidget::saveOrder(bool printAfter) {
     std::string deviceSerial = std::string(serialField_->GetValue().ToUTF8().data());
     std::string description = std::string(descriptionField_->GetValue().ToUTF8().data());
 
+    long costVal = 0;
+    costField_->GetValue().ToLong(&costVal);
+    double cost = static_cast<double>(costVal);
+
+    int masterId = 0;
+    if (masterChoice_) {
+        int sel = masterChoice_->GetSelection();
+        if (sel > 0 && sel < static_cast<int>(masterIds_.size())) {
+            masterId = masterIds_[sel];
+        }
+    }
+
     Order order;
     if (!OrderService::instance().createOrder(
             clientFullName, clientPhone, clientEmail,
             deviceType, deviceModel, deviceSerial,
-            description, user_.id, order)) {
+            description, cost, user_.id, order, masterId)) {
         errorLabel_->SetLabel(utf8::U("Не удалось создать заказ"));
         errorPanel_->Show();
         Layout();
@@ -443,14 +493,14 @@ bool NewOrderWidget::saveOrder(bool printAfter) {
 void NewOrderWidget::onCancel(wxCommandEvent&) {
     reset();
     wxCommandEvent evt(wxEVT_BUTTON, 2001);
-    GetParent()->GetEventHandler()->ProcessEvent(evt);
+    wxWindow::GetParent()->GetEventHandler()->ProcessEvent(evt);
 }
 
 void NewOrderWidget::onSave(wxCommandEvent&) {
     if (saveOrder(false)) {
         reset();
         wxCommandEvent evt(wxEVT_BUTTON, 2001);
-        GetParent()->GetEventHandler()->ProcessEvent(evt);
+        wxWindow::GetParent()->GetEventHandler()->ProcessEvent(evt);
     }
 }
 
@@ -458,7 +508,7 @@ void NewOrderWidget::onSaveAndPrint(wxCommandEvent&) {
     if (saveOrder(true)) {
         reset();
         wxCommandEvent evt(wxEVT_BUTTON, 2001);
-        GetParent()->GetEventHandler()->ProcessEvent(evt);
+        wxWindow::GetParent()->GetEventHandler()->ProcessEvent(evt);
     }
 }
 

@@ -20,8 +20,10 @@ bool OrderService::createOrder(const std::string& clientFullName,
                                const std::string& deviceModel,
                                const std::string& deviceSerial,
                                const std::string& description,
+                               double totalCost,
                                int userId,
-                               Order& outOrder) {
+                               Order& outOrder,
+                               int masterId) {
     if (clientFullName.empty() || clientPhone.empty()) return false;
     if (deviceModel.empty()) return false;
 
@@ -43,23 +45,31 @@ bool OrderService::createOrder(const std::string& clientFullName,
     order.clientId = client.id;
     order.deviceId = device.id;
     order.userId = userId;
+    order.masterId = masterId;
     order.status = OrderStatus::Accepted;
     order.description = description;
-    order.totalCost = 0.0;
+    order.totalCost = totalCost;
 
     if (!OrderRepository::instance().add(order)) return false;
 
-    Logger::instance().log(userId, "Создание заказа", "order", order.id);
+    Logger::instance().log(userId, "Заказ создан. Статус: Принят", "order", order.id);
 
     outOrder = order;
     return true;
 }
 
 bool OrderService::changeStatus(int orderId, OrderStatus newStatus) {
+    Order order = OrderRepository::instance().findById(orderId);
+    if (order.id == 0) return false;
+
+    std::string oldStatusStr = statusToString(order.status);
+    std::string newStatusStr = statusToString(newStatus);
+
+    if (oldStatusStr == newStatusStr) return true;
+
     bool ok = OrderRepository::instance().updateStatus(orderId, newStatus);
     if (ok) {
-        Logger::instance().log(0, "Смена статуса: " + statusToString(newStatus),
-                               "order", orderId);
+        Logger::instance().log(0, "Статус: " + newStatusStr, "order", orderId);
     }
     return ok;
 }

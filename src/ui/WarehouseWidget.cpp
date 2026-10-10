@@ -3,9 +3,15 @@
 #include "repositories/PartRepository.h"
 #include "services/WarehouseService.h"
 #include "core/ThemeManager.h"
+#include "core/ConfigManager.h"
+#include "core/Types.h"
 #include "core/Logger.h"
 #include "resources/styles.h"
 #include "resources/utf8.h"
+
+#include <wx/filename.h>
+#include <wx/stdpaths.h>
+#include <wx/utils.h>
 
 #include <algorithm>
 #include <cctype>
@@ -23,8 +29,9 @@ std::string toLower(const std::string& s) {
 
 }
 
-WarehouseWidget::WarehouseWidget(wxWindow* parent)
-    : wxPanel(parent, wxID_ANY)
+WarehouseWidget::WarehouseWidget(wxWindow* parent, const User& user)
+    : wxPanel(parent, wxID_ANY),
+      user_(user)
 {
     auto& tm = ThemeManager::instance();
     SetBackgroundColour(tm.background());
@@ -121,19 +128,29 @@ void WarehouseWidget::buildToolbar(wxSizer* root) {
     exportBtn->SetBackgroundColour(tm.surface());
     exportBtn->SetForegroundColour(tm.text());
     exportBtn->SetFont(wxFont(tm.fontSizeSmall() + 1, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    exportBtn->Bind(wxEVT_BUTTON, &WarehouseWidget::onExport, this);
 
-    auto* addBtn = new wxButton(bar, wxID_ANY, utf8::U("+ Добавить позицию"),
-                                wxDefaultPosition, wxSize(220, 40), wxBORDER_NONE);
-    addBtn->SetBackgroundColour(tm.primary());
-    addBtn->SetForegroundColour(*wxWHITE);
-    addBtn->SetFont(wxFont(tm.fontSizeSmall() + 1, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
-
-    addBtn->Bind(wxEVT_BUTTON, &WarehouseWidget::onAddPart, this);
+    auto* printBtn = new wxButton(bar, wxID_ANY, utf8::U("Печать"),
+                                  wxDefaultPosition, wxSize(140, 40), wxBORDER_NONE);
+    printBtn->SetBackgroundColour(tm.surface());
+    printBtn->SetForegroundColour(tm.text());
+    printBtn->SetFont(wxFont(tm.fontSizeSmall() + 1, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    printBtn->Bind(wxEVT_BUTTON, &WarehouseWidget::onPrint, this);
 
     sizer->Add(search_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 16);
     sizer->AddStretchSpacer(1);
     sizer->Add(exportBtn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
-    sizer->Add(addBtn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 16);
+    sizer->Add(printBtn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+
+    if (canWriteWarehouse(user_.role)) {
+        auto* addBtn = new wxButton(bar, wxID_ANY, utf8::U("+ Добавить позицию"),
+                                    wxDefaultPosition, wxSize(220, 40), wxBORDER_NONE);
+        addBtn->SetBackgroundColour(tm.primary());
+        addBtn->SetForegroundColour(*wxWHITE);
+        addBtn->SetFont(wxFont(tm.fontSizeSmall() + 1, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+        addBtn->Bind(wxEVT_BUTTON, &WarehouseWidget::onAddPart, this);
+        sizer->Add(addBtn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 16);
+    }
 
     bar->SetSizer(sizer);
     root->Add(bar, 0, wxEXPAND | wxLEFT | wxRIGHT, 24);
@@ -163,9 +180,13 @@ void WarehouseWidget::buildTable(wxSizer* root) {
     table_->AppendColumn(utf8::U("ОСТАТОК"),      wxLIST_FORMAT_RIGHT, 110);
     table_->AppendColumn(utf8::U("МИН."),         wxLIST_FORMAT_RIGHT, 90);
     table_->AppendColumn(utf8::U("ЦЕНА"),         wxLIST_FORMAT_RIGHT, 110);
-    table_->AppendColumn(utf8::U("РЕД."),         wxLIST_FORMAT_CENTER, 70);
-    table_->AppendColumn(utf8::U("СПИС."),        wxLIST_FORMAT_CENTER, 70);
-    table_->AppendColumn(utf8::U("УДАЛ."),        wxLIST_FORMAT_CENTER, 70);
+
+    bool canWrite = canWriteWarehouse(user_.role);
+    if (canWrite) {
+        table_->AppendColumn(utf8::U("РЕД."),  wxLIST_FORMAT_CENTER, 70);
+        table_->AppendColumn(utf8::U("СПИС."), wxLIST_FORMAT_CENTER, 70);
+        table_->AppendColumn(utf8::U("УДАЛ."), wxLIST_FORMAT_CENTER, 70);
+    }
 
     table_->setOnLeftClick([this](int row, int col) {
         onTableClick(row, col);
@@ -212,10 +233,13 @@ void WarehouseWidget::applyFilter() {
 
     auto& tm = ThemeManager::instance();
     table_->DeleteAllItems();
+    filteredParts_.clear();
 
     wxString query = search_ ? search_->GetValue().Trim().Trim(false) : wxString();
     std::string queryUtf8 = std::string(query.ToUTF8().data());
     std::string queryLower = toLower(queryUtf8);
+
+    bool canWrite = canWriteWarehouse(user_.role);
 
     long idx = 0;
     double totalSum = 0.0;
@@ -241,9 +265,12 @@ void WarehouseWidget::applyFilter() {
         table_->SetItem(row, 2, wxString::Format("%d", p.quantity));
         table_->SetItem(row, 3, wxString::Format("%d", p.minQuantity));
         table_->SetItem(row, 4, wxString::Format("%.0f", p.price));
-        table_->SetItemColumnImage(row, 5, 0);
-        table_->SetItemColumnImage(row, 6, 1);
-        table_->SetItemColumnImage(row, 7, 2);
+
+        if (canWrite) {
+            table_->SetItemColumnImage(row, 5, 0);
+            table_->SetItemColumnImage(row, 6, 1);
+            table_->SetItemColumnImage(row, 7, 2);
+        }
 
         table_->SetItemData(row, p.id);
 
@@ -254,6 +281,7 @@ void WarehouseWidget::applyFilter() {
         }
 
         totalSum += p.price * p.quantity;
+        filteredParts_.push_back(p);
         idx++;
         shownCount++;
     }
@@ -272,7 +300,7 @@ void WarehouseWidget::applyFilter() {
     if (footerSum_) {
         footerSum_->SetLabel(utf8::U("Сумма склада: ") +
                              wxString::Format("%.0f", totalSum) +
-                             utf8::U(" ₽"));
+                             utf8::U(" руб."));
     }
 }
 
@@ -281,6 +309,8 @@ void WarehouseWidget::onSearchChanged(wxCommandEvent&) {
 }
 
 void WarehouseWidget::onAddPart(wxCommandEvent&) {
+    if (!canWriteWarehouse(user_.role)) return;
+
     PartFormDialog dlg(this);
     if (dlg.ShowModal() != wxID_OK) return;
 
@@ -291,13 +321,13 @@ void WarehouseWidget::onAddPart(wxCommandEvent&) {
         return;
     }
 
-    Logger::instance().log(0, "Добавлена запчасть: " + part.name, "part", part.id);
-
+    Logger::instance().log(user_.id, "Добавлена запчасть: " + part.name, "part", part.id);
     loadParts();
 }
 
 void WarehouseWidget::onTableClick(int row, int col) {
     if (row < 0 || col < 0) return;
+    if (!canWriteWarehouse(user_.role)) return;
 
     long partId = table_->GetItemData(row);
     if (partId == 0) return;
@@ -312,6 +342,8 @@ void WarehouseWidget::onTableClick(int row, int col) {
 }
 
 void WarehouseWidget::editPart(int partId) {
+    if (!canWriteWarehouse(user_.role)) return;
+
     Part part = PartRepository::instance().findById(partId);
     if (part.id == 0) return;
 
@@ -325,12 +357,13 @@ void WarehouseWidget::editPart(int partId) {
         return;
     }
 
-    Logger::instance().log(0, "Изменена запчасть: " + updated.name, "part", updated.id);
-
+    Logger::instance().log(user_.id, "Изменена запчасть: " + updated.name, "part", updated.id);
     loadParts();
 }
 
 void WarehouseWidget::deletePart(int partId) {
+    if (!canWriteWarehouse(user_.role)) return;
+
     int answer = wxMessageBox(utf8::U("Удалить выбранную позицию?"),
                               utf8::U("Подтверждение"),
                               wxYES_NO | wxICON_QUESTION);
@@ -342,12 +375,13 @@ void WarehouseWidget::deletePart(int partId) {
         return;
     }
 
-    Logger::instance().log(0, "Удалена запчасть id=" + std::to_string(partId), "part", partId);
-
+    Logger::instance().log(user_.id, "Удалена запчасть id=" + std::to_string(partId), "part", partId);
     loadParts();
 }
 
 void WarehouseWidget::writeOffPart(int partId) {
+    if (!canWriteWarehouse(user_.role)) return;
+
     Part part = PartRepository::instance().findById(partId);
     if (part.id == 0) return;
 
@@ -364,12 +398,85 @@ void WarehouseWidget::writeOffPart(int partId) {
         return;
     }
 
-    if (!WarehouseService::instance().writeOffPart(partId, static_cast<int>(qty), 0, 0)) {
+    if (!WarehouseService::instance().writeOffPart(partId, static_cast<int>(qty), 0, user_.id)) {
         wxMessageBox(utf8::U("Не удалось списать. Проверьте остаток."),
                      utf8::U("Ошибка"), wxOK | wxICON_ERROR);
         return;
     }
     loadParts();
+}
+
+TableData WarehouseWidget::buildTableData() {
+    TableData td;
+    td.title = utf8::toUtf8(utf8::U("Складские позиции"));
+    td.headers = {
+        utf8::toUtf8(utf8::U("Артикул")),
+        utf8::toUtf8(utf8::U("Наименование")),
+        utf8::toUtf8(utf8::U("Остаток")),
+        utf8::toUtf8(utf8::U("Мин. остаток")),
+        utf8::toUtf8(utf8::U("Цена, руб.")),
+        utf8::toUtf8(utf8::U("Сумма, руб."))
+    };
+
+    for (auto& p : filteredParts_) {
+        td.rows.push_back({
+            p.article,
+            p.name,
+            std::to_string(p.quantity),
+            std::to_string(p.minQuantity),
+            wxString::Format("%.0f", p.price).ToStdString(),
+            wxString::Format("%.0f", p.price * p.quantity).ToStdString()
+        });
+    }
+    return td;
+}
+
+void WarehouseWidget::onExport(wxCommandEvent&) {
+    TableData td = buildTableData();
+    if (td.rows.empty()) {
+        wxMessageBox(utf8::U("Нет данных для экспорта"),
+                     utf8::U("Экспорт"), wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+
+    wxString fileName = wxFileSelector(
+        utf8::U("Сохранить склад как CSV"), "", "warehouse.csv", "*.csv",
+        "CSV files (*.csv)|*.csv",
+        wxFD_SAVE | wxFD_OVERWRITE_PROMPT, this);
+    if (fileName.IsEmpty()) return;
+
+    std::string path = std::string(fileName.ToUTF8().data());
+    if (TableExport::exportCsv(td, path)) {
+        wxMessageBox(utf8::U("Файл сохранён"), utf8::U("Готово"),
+                     wxOK | wxICON_INFORMATION, this);
+    } else {
+        wxMessageBox(utf8::U("Не удалось сохранить файл"), utf8::U("Ошибка"),
+                     wxOK | wxICON_ERROR, this);
+    }
+}
+
+void WarehouseWidget::onPrint(wxCommandEvent&) {
+    TableData td = buildTableData();
+    if (td.rows.empty()) {
+        wxMessageBox(utf8::U("Нет данных для печати"),
+                     utf8::U("Печать"), wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+
+    auto& cfg = ConfigManager::instance();
+    std::string outDir = std::string(
+        wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToUTF8().data());
+    std::string path = outDir + "/warehouse_" + TableExport::timestamp() + ".pdf";
+
+    std::string line1 = utf8::toUtf8(utf8::U("Всего позиций: ")) +
+                        std::to_string(td.rows.size());
+
+    if (TableExport::printPdf(td, path, cfg.fontPath(), line1, "")) {
+        wxLaunchDefaultApplication(path);
+    } else {
+        wxMessageBox(utf8::U("Не удалось создать PDF"), utf8::U("Ошибка"),
+                     wxOK | wxICON_ERROR, this);
+    }
 }
 
 }

@@ -2,14 +2,16 @@
 #include <wx/wx.h>
 #include <wx/listctrl.h>
 #include "ui/ClickableListCtrl.h"
+#include "models/User.h"
 #include "models/Part.h"
+#include "utils/TableExport.h"
 #include <vector>
 
 namespace remont {
 
 class WarehouseWidget : public wxPanel {
 public:
-    WarehouseWidget(wxWindow* parent);
+    WarehouseWidget(wxWindow* parent, const User& user);
 
 private:
     void buildAlert(wxSizer* root);
@@ -25,10 +27,16 @@ private:
     void onAddPart(wxCommandEvent& event);
     void onSearchChanged(wxCommandEvent& event);
     void onTableClick(int row, int col);
+    void onExport(wxCommandEvent& event);
+    void onPrint(wxCommandEvent& event);
 
     void editPart(int partId);
     void deletePart(int partId);
     void writeOffPart(int partId);
+
+    TableData buildTableData();
+
+    User user_;
 
     wxSizer* mainSizer_ = nullptr;
     wxPanel* alertPanel_ = nullptr;
@@ -45,6 +53,7 @@ private:
     wxBitmap bmpDelete_;
 
     std::vector<Part> allParts_;
+    std::vector<Part> filteredParts_;
 };
 
 }

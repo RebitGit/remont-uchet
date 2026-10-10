@@ -28,7 +28,7 @@ int main() {
     bool ok = remont::OrderService::instance().createOrder(
         "Тестовый Клиент", "+7-900-000-00-00", "test@test.ru",
         "Ноутбук", "TestModel", "SN-TEST",
-        "Тестовое описание", 1, order);
+        "Тестовое описание", 1500.0, 1, order);
 
     if (ok && order.id > 0) {
         std::cout << "OK: заказ создан, id=" << order.id
@@ -57,6 +57,14 @@ int main() {
         passed++;
     } else {
         std::cout << "FAIL: заказ не найден в БД\n";
+        failed++;
+    }
+
+    if (found.totalCost == 1500.0) {
+        std::cout << "OK: стоимость сохранена (1500)\n";
+        passed++;
+    } else {
+        std::cout << "FAIL: стоимость = " << found.totalCost << " (ожидалось 1500)\n";
         failed++;
     }
 

@@ -41,4 +41,14 @@ inline std::string statusToString(OrderStatus s) {
     return "Неизвестно";
 }
 
+inline bool canAccessOrders(Role)         { return true; }
+inline bool canWriteOrders(Role r)        { return r != Role::Warehouse; }
+
+inline bool canAccessWarehouse(Role r)    { return r != Role::Operator; }
+inline bool canWriteWarehouse(Role r)     { return r == Role::Admin || r == Role::Warehouse; }
+
+inline bool canAccessReports(Role r)      { return r == Role::Admin || r == Role::Master; }
+
+inline bool canAccessAdmin(Role r)        { return r == Role::Admin; }
+
 }

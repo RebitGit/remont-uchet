@@ -10,6 +10,7 @@ struct Order {
     int clientId = 0;
     int deviceId = 0;
     int userId = 0;
+    int masterId = 0;
     OrderStatus status = OrderStatus::Accepted;
     std::string receivedAt;
     std::string completedAt;

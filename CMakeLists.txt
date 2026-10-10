@@ -11,6 +11,7 @@ find_package(unofficial-libharu CONFIG REQUIRED)
 find_package(wxWidgets CONFIG REQUIRED)
 
 add_library(remont_core STATIC
+    src/utils/TableExport.cpp
     src/core/DatabaseManager.cpp
     src/core/ConfigManager.cpp
     src/core/Logger.cpp
@@ -18,7 +19,6 @@ add_library(remont_core STATIC
     src/models/User.cpp
     src/models/Client.cpp
     src/models/Device.cpp
-    src/pdf/PDFGenerator.cpp
     src/models/Order.cpp
     src/models/Part.cpp
     src/models/PartUsage.cpp
@@ -29,11 +29,13 @@ add_library(remont_core STATIC
     src/repositories/DeviceRepository.cpp
     src/repositories/OrderRepository.cpp
     src/repositories/PartRepository.cpp
+    src/pdf/PDFGenerator.cpp
 )
 target_include_directories(remont_core PUBLIC include)
 target_link_libraries(remont_core PUBLIC
     unofficial::sqlite3::sqlite3
     unofficial::libharu::hpdf
+    wx::core wx::base
 )
 
 add_executable(Remont_Uchet
@@ -43,6 +45,8 @@ add_executable(Remont_Uchet
     src/ui/DashboardWidget.cpp
     src/ui/WarehouseWidget.cpp
     src/ui/NewOrderWidget.cpp
+    src/ui/OrderViewWidget.cpp
+    src/ui/AddPartDialog.cpp
     src/ui/PartFormDialog.cpp
     src/ui/ClickableListCtrl.cpp
     src/ui/SettingsDialog.cpp

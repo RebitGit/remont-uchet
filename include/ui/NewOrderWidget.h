@@ -1,6 +1,7 @@
 #pragma once
 #include <wx/wx.h>
 #include "models/User.h"
+#include <vector>
 
 namespace remont {
 
@@ -9,6 +10,7 @@ public:
     NewOrderWidget(wxWindow* parent, const User& user);
 
     void reset();
+    void reload();
 
 private:
     wxPanel* buildBreadcrumb(wxSizer* root, wxWindow* parent);
@@ -23,6 +25,8 @@ private:
 
     bool validate();
     bool saveOrder(bool printAfter);
+
+    void loadMasters();
 
     User user_;
 
@@ -40,6 +44,8 @@ private:
 
     wxStaticText* errorLabel_ = nullptr;
     wxPanel* errorPanel_ = nullptr;
+
+    std::vector<int> masterIds_;
 };
 
 }

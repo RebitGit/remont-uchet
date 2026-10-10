@@ -1,20 +1,31 @@
 #include "ui/MainWindow.h"
 #include "ui/DashboardWidget.h"
 #include "ui/WarehouseWidget.h"
-#include "ui/RoundedPanel.h"
-#include "ui/SettingsDialog.h"
-#include "core/ThemeManager.h"
-#include "resources/styles.h"
-#include "resources/utf8.h"
 #include "ui/NewOrderWidget.h"
+#include "ui/OrderViewWidget.h"
 #include "ui/AdminWidget.h"
 #include "ui/ReportsWidget.h"
+#include "ui/RoundedPanel.h"
+#include "ui/SettingsDialog.h"
+#include "services/OrderService.h"
+#include "repositories/OrderRepository.h"
+#include "core/ThemeManager.h"
+#include "core/ConfigManager.h"
+#include "core/Logger.h"
+#include "core/Types.h"
+#include "resources/styles.h"
+#include "resources/utf8.h"
 
 #include <wx/statbmp.h>
 #include <wx/dcbuffer.h>
 #include <wx/graphics.h>
+#include <wx/filename.h>
+#include <wx/stdpaths.h>
+#include <algorithm>
 #include <ctime>
-#include <iostream>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 namespace remont {
 
@@ -119,6 +130,15 @@ private:
     wxBitmap icon_;
 };
 
+wxString roleLabel(Role r) {
+    switch (r) {
+        case Role::Admin:     return utf8::U("Администратор");
+        case Role::Master:    return utf8::U("Мастер");
+        case Role::Warehouse: return utf8::U("Кладовщик");
+        default:              return utf8::U("Оператор");
+    }
+}
+
 }
 
 MainWindow::MainWindow(const User& user)
@@ -127,13 +147,6 @@ MainWindow::MainWindow(const User& user)
       user_(user)
 {
     auto& tm = ThemeManager::instance();
-
-    std::cerr << "[MAIN] dark=" << (tm.isDark() ? "yes" : "no") << "\n";
-    std::cerr << "[MAIN] background rgb="
-              << (int)tm.background().Red() << ","
-              << (int)tm.background().Green() << ","
-              << (int)tm.background().Blue() << "\n";
-
     SetBackgroundColour(tm.background());
 
     auto* root = new wxBoxSizer(wxHORIZONTAL);
@@ -142,21 +155,42 @@ MainWindow::MainWindow(const User& user)
     auto* rightCol = new wxBoxSizer(wxVERTICAL);
     rightCol->Add(buildHeader(), 0, wxEXPAND);
 
-       book_ = new wxSimplebook(this, wxID_ANY);
+    book_ = new wxSimplebook(this, wxID_ANY);
     book_->SetBackgroundColour(tm.background());
 
-    dashboardPage_ = new DashboardWidget(book_);
-    newOrderPage_ = new NewOrderWidget(book_, user_);
-
+    dashboardPage_ = new DashboardWidget(book_, user_);
     dashboardPage_->setOnNewOrder([this]() { showNewOrderPage(); });
-
+    dashboardPage_->setOnViewOrder([this](int orderId) { showOrderViewPage(orderId); });
+    dashboardPage_->setOnPrintOrder([this](int orderId) { printOrder(orderId); });
     book_->AddPage(dashboardPage_, utf8::U("Заказы"));
-    book_->AddPage(new WarehouseWidget(book_), utf8::U("Склад"));
-        book_->AddPage(new ReportsWidget(book_), utf8::U("Отчёты"));
-    book_->AddPage(new AdminWidget(book_), utf8::U("Администрирование"));
+
+    if (canAccessWarehouse(user_.role)) {
+        warehousePage_ = new WarehouseWidget(book_, user_);
+        book_->AddPage(warehousePage_, utf8::U("Склад"));
+    }
+
+    if (user_.role == Role::Master) {
+        myOrdersPage_ = new DashboardWidget(book_, user_, user_.id);
+        myOrdersPage_->setOnViewOrder([this](int orderId) { showOrderViewPage(orderId); });
+        myOrdersPage_->setOnPrintOrder([this](int orderId) { printOrder(orderId); });
+        book_->AddPage(myOrdersPage_, utf8::U("Мои заказы"));
+    }
+
+    if (canAccessReports(user_.role)) {
+        reportsPage_ = new ReportsWidget(book_);
+        book_->AddPage(reportsPage_, utf8::U("Отчёты"));
+    }
+
+    if (canAccessAdmin(user_.role)) {
+        adminPage_ = new AdminWidget(book_, user_);
+        book_->AddPage(adminPage_, utf8::U("Администрирование"));
+    }
+
+    newOrderPage_ = new NewOrderWidget(book_, user_);
     book_->AddPage(newOrderPage_, utf8::U("Новый заказ"));
 
-    Bind(wxEVT_BUTTON, &MainWindow::onBackToDashboard, this, 2001);
+    orderViewPage_ = new OrderViewWidget(book_, user_);
+    book_->AddPage(orderViewPage_, utf8::U("Заказ"));
 
     rightCol->Add(book_, 1, wxEXPAND);
     root->Add(rightCol, 1, wxEXPAND);
@@ -165,7 +199,16 @@ MainWindow::MainWindow(const User& user)
     Maximize(true);
     setActiveNav(1001);
 
+    Bind(wxEVT_BUTTON, &MainWindow::onBackToDashboard, this, 2001);
+    Bind(wxEVT_BUTTON, &MainWindow::onBackToDashboard, this, 2002);
+    Bind(wxEVT_BUTTON, &MainWindow::onShowOrderView, this, 2003);
     Bind(wxEVT_CLOSE_WINDOW, &MainWindow::onClose, this);
+
+    backupTimer_.SetOwner(this);
+    Bind(wxEVT_TIMER, &MainWindow::onBackupTimer, this);
+    backupTimer_.Start(60000);
+
+    tryAutoBackup();
 }
 
 MainWindow::~MainWindow() = default;
@@ -223,22 +266,39 @@ wxPanel* MainWindow::buildSidebar() {
     sizer->Add(logoRow, 0, wxEXPAND | wxALL, 20);
     sizer->AddSpacer(8);
 
-    navOrders_    = buildNavItem(sidebar_, utf8::U("Заказы"),
-                                 "resources/icons/nav_orders.png", 1001, true);
-    navWarehouse_ = buildNavItem(sidebar_, utf8::U("Склад"),
-                                 "resources/icons/nav_warehouse.png", 1002, false);
-    navReports_   = buildNavItem(sidebar_, utf8::U("Отчёты"),
-                                 "resources/icons/nav_reports.png", 1003, false);
-    navAdmin_     = buildNavItem(sidebar_, utf8::U("Администрирование"),
-                                 "resources/icons/nav_admin.png", 1004, false);
+    if (canAccessOrders(user_.role)) {
+        navOrders_ = buildNavItem(sidebar_, utf8::U("Заказы"),
+                                  "resources/icons/nav_orders.png", 1001, true);
+        sizer->Add(navOrders_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+        sizer->AddSpacer(4);
+    }
 
-    sizer->Add(navOrders_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
-    sizer->AddSpacer(4);
-    sizer->Add(navWarehouse_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
-    sizer->AddSpacer(4);
-    sizer->Add(navReports_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
-    sizer->AddSpacer(4);
-    sizer->Add(navAdmin_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+    if (user_.role == Role::Master) {
+        navMyOrders_ = buildNavItem(sidebar_, utf8::U("Мои заказы"),
+                                    "resources/icons/nav_orders.png", 1005, false);
+        sizer->Add(navMyOrders_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+        sizer->AddSpacer(4);
+    }
+
+    if (canAccessWarehouse(user_.role)) {
+        navWarehouse_ = buildNavItem(sidebar_, utf8::U("Склад"),
+                                     "resources/icons/nav_warehouse.png", 1002, false);
+        sizer->Add(navWarehouse_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+        sizer->AddSpacer(4);
+    }
+
+    if (canAccessReports(user_.role)) {
+        navReports_ = buildNavItem(sidebar_, utf8::U("Отчёты"),
+                                   "resources/icons/nav_reports.png", 1003, false);
+        sizer->Add(navReports_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+        sizer->AddSpacer(4);
+    }
+
+    if (canAccessAdmin(user_.role)) {
+        navAdmin_ = buildNavItem(sidebar_, utf8::U("Администрирование"),
+                                 "resources/icons/nav_admin.png", 1004, false);
+        sizer->Add(navAdmin_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+    }
 
     sizer->AddStretchSpacer(1);
 
@@ -249,12 +309,17 @@ wxPanel* MainWindow::buildSidebar() {
 
     auto* profileRow = new wxBoxSizer(wxHORIZONTAL);
 
-    auto* avatar = new CircleAvatar(sidebar_, "AD",
+    wxString avatarText = "OP";
+    if (user_.role == Role::Admin) avatarText = "AD";
+    else if (user_.role == Role::Master) avatarText = "MS";
+    else if (user_.role == Role::Warehouse) avatarText = "WH";
+
+    auto* avatar = new CircleAvatar(sidebar_, avatarText,
                                     wxColour(0x47, 0x55, 0x69),
                                     *wxWHITE, 42);
 
     auto* profCol = new wxBoxSizer(wxVERTICAL);
-    auto* profRole = new wxStaticText(sidebar_, wxID_ANY, utf8::U("Администратор"));
+    auto* profRole = new wxStaticText(sidebar_, wxID_ANY, roleLabel(user_.role));
     profRole->SetForegroundColour(*wxWHITE);
     profRole->SetBackgroundColour(tm.sidebar());
     profRole->SetFont(wxFont(tm.fontSizeSmall(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
@@ -327,6 +392,15 @@ wxPanel* MainWindow::buildHeader() {
     return header_;
 }
 
+void MainWindow::selectPage(wxWindow* page, const wxString& title, int navId) {
+    if (!page) return;
+    int idx = book_->FindPage(page);
+    if (idx < 0) return;
+    book_->SetSelection(idx);
+    headerTitle_->SetLabel(title);
+    setActiveNav(navId);
+}
+
 void MainWindow::setActiveNav(int id) {
     auto& tm = ThemeManager::instance();
 
@@ -334,11 +408,13 @@ void MainWindow::setActiveNav(int id) {
     wxColour normal = tm.sidebar();
 
     auto setup = [&](RoundedPanel* panel, bool isActive) {
+        if (!panel) return;
         panel->SetActive(isActive);
         panel->SetFillColour(isActive ? active : normal);
     };
 
     setup(navOrders_,    id == 1001);
+    setup(navMyOrders_,  id == 1005);
     setup(navWarehouse_, id == 1002);
     setup(navReports_,   id == 1003);
     setup(navAdmin_,     id == 1004);
@@ -347,11 +423,20 @@ void MainWindow::setActiveNav(int id) {
 void MainWindow::onNavClick(wxCommandEvent& event) {
     int id = event.GetId();
     currentNavId_ = id;
-    if (id == 1001) { book_->SetSelection(0); headerTitle_->SetLabel(utf8::U("Заказы")); }
-    else if (id == 1002) { book_->SetSelection(1); headerTitle_->SetLabel(utf8::U("Склад запчастей")); }
-    else if (id == 1003) { book_->SetSelection(2); headerTitle_->SetLabel(utf8::U("Отчёты")); }
-    else if (id == 1004) { book_->SetSelection(3); headerTitle_->SetLabel(utf8::U("Администрирование")); }
-    setActiveNav(id);
+
+    if (id == 1001 && canAccessOrders(user_.role)) {
+        selectPage(dashboardPage_, utf8::U("Заказы"), 1001);
+    } else if (id == 1005 && user_.role == Role::Master && myOrdersPage_) {
+        myOrdersPage_->reload();
+        selectPage(myOrdersPage_, utf8::U("Мои заказы"), 1005);
+    } else if (id == 1002 && canAccessWarehouse(user_.role) && warehousePage_) {
+        selectPage(warehousePage_, utf8::U("Склад запчастей"), 1002);
+    } else if (id == 1003 && canAccessReports(user_.role) && reportsPage_) {
+        reportsPage_->reload();
+        selectPage(reportsPage_, utf8::U("Отчёты"), 1003);
+    } else if (id == 1004 && canAccessAdmin(user_.role) && adminPage_) {
+        selectPage(adminPage_, utf8::U("Администрирование"), 1004);
+    }
 }
 
 void MainWindow::onLogout(wxEvent&) {
@@ -370,20 +455,100 @@ void MainWindow::onSettingsClick(wxMouseEvent&) {
 }
 
 void MainWindow::showNewOrderPage() {
-    book_->SetSelection(4);
-    headerTitle_->SetLabel(utf8::U("Новый заказ"));
-    setActiveNav(1001);
+    if (!canWriteOrders(user_.role)) return;
+
+    newOrderPage_->reload();
+    selectPage(newOrderPage_, utf8::U("Новый заказ"), 1001);
+}
+
+void MainWindow::showOrderViewPage(int orderId) {
+    orderViewPage_->setOrderId(orderId);
+    selectPage(orderViewPage_, utf8::U("Просмотр заказа"), 1001);
 }
 
 void MainWindow::onBackToDashboard(wxCommandEvent&) {
-    book_->SetSelection(0);
-    headerTitle_->SetLabel(utf8::U("Заказы"));
+    if (!canAccessOrders(user_.role)) return;
+
     dashboardPage_->reload();
-    setActiveNav(1001);
+    selectPage(dashboardPage_, utf8::U("Заказы"), 1001);
+}
+
+void MainWindow::onShowOrderView(wxCommandEvent& event) {
+    int orderId = event.GetInt();
+    showOrderViewPage(orderId);
 }
 
 void MainWindow::onClose(wxCloseEvent& event) {
     event.Skip();
+}
+
+void MainWindow::printOrder(int orderId) {
+    Order order = OrderRepository::instance().findById(orderId);
+    if (order.id == 0) {
+        wxMessageBox(utf8::U("Заказ не найден"),
+                     utf8::U("Ошибка"), wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    std::string fileName = "act_" + order.orderNumber + ".pdf";
+    std::replace(fileName.begin(), fileName.end(), '#', '_');
+
+    std::string outputPath = std::string(
+        wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToUTF8().data())
+        + "/" + fileName;
+
+    if (OrderService::instance().printAcceptanceAct(orderId, outputPath)) {
+        wxString msg = utf8::U("Акт сохранён:\n") + utf8::U(outputPath.c_str());
+        wxMessageBox(msg, utf8::U("Печать акта"),
+                     wxOK | wxICON_INFORMATION, this);
+    } else {
+        wxMessageBox(utf8::U("Не удалось сформировать PDF-акт"),
+                     utf8::U("Ошибка"), wxOK | wxICON_ERROR, this);
+    }
+}
+
+void MainWindow::onBackupTimer(wxTimerEvent&) {
+    tryAutoBackup();
+}
+
+void MainWindow::tryAutoBackup() {
+    auto& cfg = ConfigManager::instance();
+    if (!cfg.autoBackupEnabled()) return;
+
+    fs::path dbPath = cfg.dbPath();
+    fs::path backupDir = cfg.backupDir();
+
+    std::error_code ec;
+    fs::create_directories(backupDir, ec);
+
+    std::time_t now = std::time(nullptr);
+    std::tm* tmv = std::localtime(&now);
+    if (tmv->tm_hour < 8) return;
+
+    char todayBuf[16];
+    std::strftime(todayBuf, sizeof(todayBuf), "%Y-%m-%d", tmv);
+    std::string today = todayBuf;
+
+    std::string autoPrefix = "auto_" + today;
+
+    if (fs::exists(backupDir)) {
+        for (auto& entry : fs::directory_iterator(backupDir)) {
+            if (!entry.is_regular_file()) continue;
+            std::string name = entry.path().filename().string();
+            if (name.rfind(autoPrefix, 0) == 0) return;
+        }
+    }
+
+    char nameBuf[64];
+    std::strftime(nameBuf, sizeof(nameBuf), "auto_%Y-%m-%d_%H-%M-%S.db", tmv);
+    fs::path outPath = backupDir / nameBuf;
+
+    try {
+        fs::copy_file(dbPath, outPath, fs::copy_options::overwrite_existing);
+        Logger::instance().log(user_.id,
+            "Автоматическая резервная копия: " + std::string(nameBuf), "db", 0);
+    } catch (...) {
+    }
 }
 
 }

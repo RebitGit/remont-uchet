@@ -15,8 +15,10 @@ public:
                      const std::string& deviceModel,
                      const std::string& deviceSerial,
                      const std::string& description,
+                     double totalCost,
                      int userId,
-                     Order& outOrder);
+                     Order& outOrder,
+                     int masterId = 0);
 
     bool changeStatus(int orderId, OrderStatus newStatus);
 

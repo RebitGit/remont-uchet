@@ -13,10 +13,31 @@
 #include <filesystem>
 #include <windows.h>
 #include <iostream>
+#include <string>
 
 using namespace remont;
 
 namespace fs = std::filesystem;
+
+static void migrateDatabase(remont::DatabaseManager& db) {
+    sqlite3_stmt* stmt = nullptr;
+    bool hasMasterId = false;
+
+    if (sqlite3_prepare_v2(db.handle(), "PRAGMA table_info(orders);", -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            if (name && std::string(name) == "master_id") {
+                hasMasterId = true;
+                break;
+            }
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    if (!hasMasterId) {
+        db.execute("ALTER TABLE orders ADD COLUMN master_id INTEGER REFERENCES users(id);");
+    }
+}
 
 static void seedDemoData(remont::DatabaseManager& db) {
     sqlite3_stmt* stmt = nullptr;
@@ -110,6 +131,7 @@ bool RemontApp::OnInit() {
         return false;
     }
     db.execFile(cfg.schemaPath());
+    migrateDatabase(db);
 
     {
         const char* checkSql =

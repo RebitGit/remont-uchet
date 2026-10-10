@@ -12,6 +12,11 @@ public:
     std::string schemaPath() const;
     int lowStockThreshold() const { return lowStockThreshold_; }
 
+    bool autoBackupEnabled() const;
+    void setAutoBackupEnabled(bool enabled);
+    std::string backupDir() const;
+    std::string backupSettingsPath() const;
+
 private:
     ConfigManager();
     ConfigManager(const ConfigManager&) = delete;
@@ -19,6 +24,7 @@ private:
 
     std::string projectRoot_;
     int lowStockThreshold_ = 3;
+    bool autoBackupEnabled_ = true;
 };
 
 }
