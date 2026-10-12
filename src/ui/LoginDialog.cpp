@@ -7,6 +7,30 @@
 
 namespace remont {
 
+namespace {
+
+wxBitmap loadDarkIcon(const wxString& path, int size, const wxColour& colour) {
+    wxImage img;
+    if (!img.LoadFile(path, wxBITMAP_TYPE_PNG)) {
+        return wxBitmap(size, size);
+    }
+    img.Rescale(size, size, wxIMAGE_QUALITY_HIGH);
+    if (!img.HasAlpha()) img.InitAlpha();
+    unsigned char* rgb   = img.GetData();
+    unsigned char* alpha = img.GetAlpha();
+    int pixels = img.GetWidth() * img.GetHeight();
+    for (int i = 0; i < pixels; ++i) {
+        if (alpha[i] > 0) {
+            rgb[i * 3 + 0] = colour.Red();
+            rgb[i * 3 + 1] = colour.Green();
+            rgb[i * 3 + 2] = colour.Blue();
+        }
+    }
+    return wxBitmap(img);
+}
+
+}
+
 LoginDialog::LoginDialog(wxWindow* parent)
     : wxDialog(parent, wxID_ANY, utf8::U("Ремонт-Учёт — Вход"),
                wxDefaultPosition, wxSize(420, 600),
@@ -15,16 +39,9 @@ LoginDialog::LoginDialog(wxWindow* parent)
     auto& tm = ThemeManager::instance();
     SetBackgroundColour(tm.background());
 
-    wxImage eyeOpenImg;
-    if (eyeOpenImg.LoadFile("resources/icons/eye.png", wxBITMAP_TYPE_PNG)) {
-        eyeOpenImg.Rescale(18, 18, wxIMAGE_QUALITY_HIGH);
-        eyeOpen_ = wxBitmap(eyeOpenImg);
-    }
-    wxImage eyeClosedImg;
-    if (eyeClosedImg.LoadFile("resources/icons/eye_off.png", wxBITMAP_TYPE_PNG)) {
-        eyeClosedImg.Rescale(18, 18, wxIMAGE_QUALITY_HIGH);
-        eyeClosed_ = wxBitmap(eyeClosedImg);
-    }
+    wxColour iconColour(0x37, 0x41, 0x51);
+    eyeOpen_   = loadDarkIcon("resources/icons/eye.png",     18, iconColour);
+    eyeClosed_ = loadDarkIcon("resources/icons/eye_off.png", 18, iconColour);
 
     auto* root = new wxBoxSizer(wxVERTICAL);
     root->AddStretchSpacer(1);

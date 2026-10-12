@@ -38,7 +38,7 @@ target_link_libraries(remont_core PUBLIC
     wx::core wx::base
 )
 
-add_executable(Remont_Uchet
+add_executable(Remont_Uchet WIN32
     src/main.cpp
     src/ui/LoginDialog.cpp
     src/ui/MainWindow.cpp
