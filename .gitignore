@@ -1,9 +1,15 @@
 build/
 data/*.db
+backups/
+*.pdf
 *.exe
 *.dll
 *.o
 *.obj
-.vscode/
-.cache/
+CMakeCache.txt
+CMakeFiles/
 compile_commands.json
+.cache/
+.vscode/backups/
+.cache/
+.clangd
