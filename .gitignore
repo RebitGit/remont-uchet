@@ -1,4 +1,6 @@
 build/
+build-release/
+release/
 data/*.db
 backups/
 *.pdf
@@ -10,6 +12,6 @@ CMakeCache.txt
 CMakeFiles/
 compile_commands.json
 .cache/
-.vscode/backups/
-.cache/
+.vscode/
 .clangd
+Remont_Uchet.zip
