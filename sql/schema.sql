@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS orders (
     received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TEXT,
     description TEXT,
+    work_cost  REAL NOT NULL DEFAULT 0,
+    parts_cost REAL NOT NULL DEFAULT 0,
     total_cost REAL NOT NULL DEFAULT 0
 );
 

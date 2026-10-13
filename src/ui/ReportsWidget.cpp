@@ -19,6 +19,8 @@
 #include <cmath>
 #include <sstream>
 #include <iomanip>
+#include <string>
+#include <utility>
 
 namespace remont {
 
@@ -34,7 +36,126 @@ wxColour colorForStatus(const std::string& s) {
     return wxColour(0x9C, 0xA3, 0xAF);
 }
 
+std::string formatTime(std::time_t t) {
+    std::tm tm = *std::localtime(&t);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+    return std::string(buf);
 }
+
+constexpr int CUSTOM_PERIOD_INDEX = 13;
+
+std::pair<std::string, std::string> computePeriod(int sel,
+                                                   std::time_t customFrom,
+                                                   std::time_t customTo)
+{
+    std::time_t nowT = std::time(nullptr);
+    std::tm tmNow = *std::localtime(&nowT);
+
+    std::tm start = tmNow;
+    std::tm end   = tmNow;
+    bool endIsNow = false;
+
+    switch (sel) {
+        case 0:
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            end.tm_hour = 23; end.tm_min = 59; end.tm_sec = 59;
+            break;
+        case 1:
+            start.tm_mday -= 1;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            end.tm_mday -= 1;
+            end.tm_hour = 23; end.tm_min = 59; end.tm_sec = 59;
+            break;
+        case 2:
+            start.tm_mday -= 6;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            endIsNow = true;
+            break;
+        case 3:
+            start.tm_mday -= 29;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            endIsNow = true;
+            break;
+        case 4: {
+            int daysFromMonday = (tmNow.tm_wday == 0) ? 6 : (tmNow.tm_wday - 1);
+            start.tm_mday -= daysFromMonday;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            endIsNow = true;
+            break;
+        }
+        case 5: {
+            int daysFromMonday = (tmNow.tm_wday == 0) ? 6 : (tmNow.tm_wday - 1);
+            start.tm_mday -= (daysFromMonday + 7);
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            end.tm_mday -= daysFromMonday + 1;
+            end.tm_hour = 23; end.tm_min = 59; end.tm_sec = 59;
+            break;
+        }
+        case 6:
+            start.tm_mday = 1;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            endIsNow = true;
+            break;
+        case 7:
+            start.tm_mon -= 1;
+            start.tm_mday = 1;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            end.tm_mon -= 1;
+            end.tm_mday = 0;
+            end.tm_hour = 23; end.tm_min = 59; end.tm_sec = 59;
+            break;
+        case 8:
+            start.tm_mon = (tmNow.tm_mon / 3) * 3;
+            start.tm_mday = 1;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            endIsNow = true;
+            break;
+        case 9:
+            start.tm_mon = ((tmNow.tm_mon / 3) * 3) - 3;
+            start.tm_mday = 1;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            end.tm_mon = (tmNow.tm_mon / 3) * 3;
+            end.tm_mday = 0;
+            end.tm_hour = 23; end.tm_min = 59; end.tm_sec = 59;
+            break;
+        case 10:
+            start.tm_mon = 0;
+            start.tm_mday = 1;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            endIsNow = true;
+            break;
+        case 11:
+            start.tm_year -= 1;
+            start.tm_mon = 0;
+            start.tm_mday = 1;
+            start.tm_hour = 0; start.tm_min = 0; start.tm_sec = 0;
+            end.tm_year -= 1;
+            end.tm_mon = 11;
+            end.tm_mday = 31;
+            end.tm_hour = 23; end.tm_min = 59; end.tm_sec = 59;
+            break;
+        case 12:
+            return {"", ""};
+        case CUSTOM_PERIOD_INDEX: {
+            std::tm s = *std::localtime(&customFrom);
+            std::tm e = *std::localtime(&customTo);
+            s.tm_hour = 0;  s.tm_min = 0;  s.tm_sec = 0;
+            e.tm_hour = 23; e.tm_min = 59; e.tm_sec = 59;
+            std::time_t sT = std::mktime(&s);
+            std::time_t eT = std::mktime(&e);
+            return {formatTime(sT), formatTime(eT)};
+        }
+        default:
+            return {"", ""};
+    }
+
+    std::time_t startT = std::mktime(&start);
+    std::time_t endT = endIsNow ? nowT : std::mktime(&end);
+    return {formatTime(startT), formatTime(endT)};
+}
+
+}  // namespace
 
 BarChartPanel::BarChartPanel(wxWindow* parent)
     : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(-1, 340))
@@ -372,27 +493,40 @@ void ReportsWidget::buildToolbar(wxSizer* root) {
 
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    auto makeLabel = [&](const wxString& text) {
-        auto* lbl = new wxStaticText(bar, wxID_ANY, text);
+    auto makeLabel = [&](wxWindow* parent, const wxString& text) {
+        auto* lbl = new wxStaticText(parent, wxID_ANY, text);
         lbl->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
         lbl->SetForegroundColour(tm.muted());
-        lbl->SetBackgroundColour(tm.surface());
+        lbl->SetBackgroundColour(parent->GetBackgroundColour());
         return lbl;
     };
 
-    auto* periodLabel = makeLabel(utf8::U("Период:"));
-    periodChoice_ = new wxChoice(bar, wxID_ANY, wxDefaultPosition, wxSize(200, 36));
+    auto* periodLabel = makeLabel(bar, utf8::U("Период:"));
+
+    periodChoice_ = new wxChoice(bar, wxID_ANY, wxDefaultPosition, wxSize(220, 36));
     periodChoice_->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     periodChoice_->SetBackgroundColour(tm.surface());
     periodChoice_->SetForegroundColour(tm.text());
+
+    periodChoice_->Append(utf8::U("Сегодня"));
+    periodChoice_->Append(utf8::U("Вчера"));
     periodChoice_->Append(utf8::U("Последние 7 дней"));
     periodChoice_->Append(utf8::U("Последние 30 дней"));
-    periodChoice_->Append(utf8::U("Квартал"));
+    periodChoice_->Append(utf8::U("Текущая неделя"));
+    periodChoice_->Append(utf8::U("Прошлая неделя"));
+    periodChoice_->Append(utf8::U("Текущий месяц"));
+    periodChoice_->Append(utf8::U("Прошлый месяц"));
+    periodChoice_->Append(utf8::U("Текущий квартал"));
+    periodChoice_->Append(utf8::U("Прошлый квартал"));
+    periodChoice_->Append(utf8::U("Текущий год"));
+    periodChoice_->Append(utf8::U("Прошлый год"));
     periodChoice_->Append(utf8::U("Всё время"));
-    periodChoice_->SetSelection(1);
-    periodChoice_->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { loadReport(); });
+    periodChoice_->Append(utf8::U("Произвольный период"));
 
-    auto* typeLabel = makeLabel(utf8::U("Тип отчёта:"));
+    periodChoice_->SetSelection(3);
+    periodChoice_->Bind(wxEVT_CHOICE, &ReportsWidget::onPeriodChanged, this);
+
+    auto* typeLabel = makeLabel(bar, utf8::U("Тип отчёта:"));
     typeChoice_ = new wxChoice(bar, wxID_ANY, wxDefaultPosition, wxSize(220, 36));
     typeChoice_->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     typeChoice_->SetBackgroundColour(tm.surface());
@@ -428,6 +562,57 @@ void ReportsWidget::buildToolbar(wxSizer* root) {
 
     bar->SetSizer(sizer);
     root->Add(bar, 0, wxEXPAND | wxLEFT | wxRIGHT, 24);
+
+    customRow_ = new wxPanel(scroll_, wxID_ANY, wxDefaultPosition, wxSize(-1, 56));
+    customRow_->SetBackgroundColour(tm.surface());
+
+    auto* custSizer = new wxBoxSizer(wxHORIZONTAL);
+
+    customFromLabel_ = makeLabel(customRow_, utf8::U("С:"));
+    customFromDate_  = new wxDatePickerCtrl(customRow_, wxID_ANY, wxDefaultDateTime,
+        wxDefaultPosition, wxSize(160, 36), wxDP_DEFAULT | wxDP_SHOWCENTURY);
+    customFromDate_->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+
+    customToLabel_ = makeLabel(customRow_, utf8::U("По:"));
+    customToDate_  = new wxDatePickerCtrl(customRow_, wxID_ANY, wxDefaultDateTime,
+        wxDefaultPosition, wxSize(160, 36), wxDP_DEFAULT | wxDP_SHOWCENTURY);
+    customToDate_->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+
+    wxDateTime today = wxDateTime::Today();
+    wxDateTime monthAgo = today;
+    monthAgo.Subtract(wxDateSpan::Months(1));
+    customFromDate_->SetValue(monthAgo);
+    customToDate_->SetValue(today);
+
+    customFromDate_->Bind(wxEVT_DATE_CHANGED, &ReportsWidget::onCustomDateChanged, this);
+    customToDate_->Bind(wxEVT_DATE_CHANGED, &ReportsWidget::onCustomDateChanged, this);
+
+    custSizer->Add(customFromLabel_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 20);
+    custSizer->Add(customFromDate_,  0, wxALIGN_CENTER_VERTICAL | wxLEFT, 8);
+    custSizer->AddSpacer(24);
+    custSizer->Add(customToLabel_, 0, wxALIGN_CENTER_VERTICAL);
+    custSizer->Add(customToDate_,  0, wxALIGN_CENTER_VERTICAL | wxLEFT, 8);
+    custSizer->AddStretchSpacer(1);
+
+    customRow_->SetSizer(custSizer);
+    customRow_->Hide();
+    root->Add(customRow_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 24);
+}
+
+void ReportsWidget::onPeriodChanged(wxCommandEvent& evt) {
+    int sel = evt.GetSelection();
+    bool isCustom = (sel == CUSTOM_PERIOD_INDEX);
+
+    if (customRow_) {
+        customRow_->Show(isCustom);
+        if (customRow_->GetParent()) customRow_->GetParent()->Layout();
+    }
+
+    loadReport();
+}
+
+void ReportsWidget::onCustomDateChanged(wxDateEvent&) {
+    loadReport();
 }
 
 void ReportsWidget::buildStatCards(wxSizer* root) {
@@ -442,19 +627,19 @@ void ReportsWidget::buildStatCards(wxSizer* root) {
         auto* s = new wxBoxSizer(wxVERTICAL);
 
         auto* value = new wxStaticText(card, wxID_ANY, "0");
-        value->SetFont(wxFont(30, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
+        value->SetFont(wxFont(24, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD));
         value->SetForegroundColour(valueColor);
         value->SetBackgroundColour(tm.surface());
 
         auto* label = new wxStaticText(card, wxID_ANY, title);
-        label->SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+        label->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
         label->SetForegroundColour(tm.muted());
         label->SetBackgroundColour(tm.surface());
 
         s->AddStretchSpacer(1);
-        s->Add(value, 0, wxLEFT | wxRIGHT, 24);
+        s->Add(value, 0, wxLEFT | wxRIGHT, 18);
         s->AddSpacer(4);
-        s->Add(label, 0, wxLEFT | wxRIGHT, 24);
+        s->Add(label, 0, wxLEFT | wxRIGHT, 18);
         s->AddStretchSpacer(1);
         card->SetSizer(s);
 
@@ -462,13 +647,15 @@ void ReportsWidget::buildStatCards(wxSizer* root) {
         return card;
     };
 
-    auto* c1 = makeCard(utf8::U("Всего заказов\nза период"), &totalOrdersValue_, tm.primary());
-    auto* c2 = makeCard(utf8::U("Выручка\nстоимость работ"), &revenueValue_, tm.success());
-    auto* c3 = makeCard(utf8::U("Среднее время\nот приёма до выдачи"), &avgTimeValue_, tm.warning());
+    auto* c1 = makeCard(utf8::U("Всего\nзаказов"),   &totalOrdersValue_, tm.primary());
+    auto* c2 = makeCard(utf8::U("Стоимость\nработ"),  &workCostValue_,   tm.success());
+    auto* c3 = makeCard(utf8::U("Стоимость\nзапчастей"), &partsCostValue_, tm.warning());
+    auto* c4 = makeCard(utf8::U("Итого\nза период"),  &totalCostValue_,  tm.danger());
 
     row->Add(c1, 1, wxEXPAND | wxRIGHT, 12);
     row->Add(c2, 1, wxEXPAND | wxRIGHT, 12);
-    row->Add(c3, 1, wxEXPAND);
+    row->Add(c3, 1, wxEXPAND | wxRIGHT, 12);
+    row->Add(c4, 1, wxEXPAND);
 
     root->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT, 24);
 }
@@ -582,52 +769,54 @@ void ReportsWidget::loadReport() {
     sqlite3* db = DatabaseManager::instance().handle();
     if (!db) return;
 
-    int periodSel = periodChoice_ ? periodChoice_->GetSelection() : 1;
-    std::string since;
-    if (periodSel == 0)      since = "-7 days";
-    else if (periodSel == 1) since = "-30 days";
-    else if (periodSel == 2) since = "-90 days";
-    else                     since = "";
+    int periodSel = periodChoice_ ? periodChoice_->GetSelection() : 3;
+
+    std::time_t customFrom = 0;
+    std::time_t customTo = 0;
+    if (customFromDate_ && customToDate_) {
+        wxDateTime wxF = customFromDate_->GetValue();
+        wxDateTime wxT = customToDate_->GetValue();
+        if (wxF.IsValid()) customFrom = wxF.GetTicks();
+        if (wxT.IsValid()) customTo   = wxT.GetTicks();
+    }
+
+    auto range = computePeriod(periodSel, customFrom, customTo);
+    const std::string& dateFrom = range.first;
+    const std::string& dateTo   = range.second;
+    bool useFilter = !dateFrom.empty() && !dateTo.empty();
 
     {
-        std::string sqlCount = "SELECT COUNT(*), IFNULL(SUM(total_cost),0) FROM orders";
-        if (!since.empty()) sqlCount += " WHERE received_at >= datetime('now', '" + since + "')";
+        std::string sqlCount =
+            "SELECT COUNT(*), "
+            "IFNULL(SUM(work_cost),0), "
+            "IFNULL(SUM(parts_cost),0), "
+            "IFNULL(SUM(total_cost),0) "
+            "FROM orders";
+        if (useFilter) sqlCount += " WHERE received_at >= ? AND received_at <= ?";
 
         sqlite3_stmt* stmt = nullptr;
         int total = 0;
-        double revenue = 0.0;
+        double workSum = 0.0, partsSum = 0.0, totalSum = 0.0;
+
         if (sqlite3_prepare_v2(db, sqlCount.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+            if (useFilter) {
+                sqlite3_bind_text(stmt, 1, dateFrom.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(stmt, 2, dateTo.c_str(),   -1, SQLITE_TRANSIENT);
+            }
             if (sqlite3_step(stmt) == SQLITE_ROW) {
-                total = sqlite3_column_int(stmt, 0);
-                revenue = sqlite3_column_double(stmt, 1);
+                total    = sqlite3_column_int(stmt, 0);
+                workSum  = sqlite3_column_double(stmt, 1);
+                partsSum = sqlite3_column_double(stmt, 2);
+                totalSum = sqlite3_column_double(stmt, 3);
             }
             sqlite3_finalize(stmt);
         }
 
         totalOrdersValue_->SetLabel(wxString::Format("%d", total));
 
-        wxString revStr = wxString::Format("%.0f", revenue);
-        revStr += " ";
-        revStr += utf8::U("руб.");
-        revenueValue_->SetLabel(revStr);
-    }
-
-    {
-        std::string sqlAvg =
-            "SELECT AVG(julianday(completed_at) - julianday(received_at)) "
-            "FROM orders WHERE completed_at IS NOT NULL";
-        sqlite3_stmt* stmt = nullptr;
-        double avgDays = 0.0;
-        if (sqlite3_prepare_v2(db, sqlAvg.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
-            if (sqlite3_step(stmt) == SQLITE_ROW) {
-                avgDays = sqlite3_column_double(stmt, 0);
-            }
-            sqlite3_finalize(stmt);
-        }
-        wxString avgStr = wxString::Format("%.1f", avgDays);
-        avgStr += " ";
-        avgStr += utf8::U("дн.");
-        avgTimeValue_->SetLabel(avgStr);
+        workCostValue_->SetLabel(wxString::Format("%.0f", workSum) + " " + utf8::U("руб."));
+        partsCostValue_->SetLabel(wxString::Format("%.0f", partsSum) + " " + utf8::U("руб."));
+        totalCostValue_->SetLabel(wxString::Format("%.0f", totalSum) + " " + utf8::U("руб."));
     }
 
     lastStats_.clear();
@@ -638,11 +827,18 @@ void ReportsWidget::loadReport() {
     int grandTotal = 0;
 
     for (auto& s : statuses) {
-        const char* sql = "SELECT COUNT(*) FROM orders WHERE status = ?;";
+        std::string sql = "SELECT COUNT(*) FROM orders WHERE status = ?";
+        if (useFilter) sql += " AND received_at >= ? AND received_at <= ?";
+        sql += ";";
+
         sqlite3_stmt* stmt = nullptr;
         int cnt = 0;
-        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
             sqlite3_bind_text(stmt, 1, s.c_str(), -1, SQLITE_TRANSIENT);
+            if (useFilter) {
+                sqlite3_bind_text(stmt, 2, dateFrom.c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(stmt, 3, dateTo.c_str(),   -1, SQLITE_TRANSIENT);
+            }
             if (sqlite3_step(stmt) == SQLITE_ROW) cnt = sqlite3_column_int(stmt, 0);
             sqlite3_finalize(stmt);
         }

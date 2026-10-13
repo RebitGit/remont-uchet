@@ -41,6 +41,7 @@ private:
 
     void onBackupTimer(wxTimerEvent& event);
     void tryAutoBackup();
+    void cleanupOldOrders();
 
     void selectPage(wxWindow* page, const wxString& title, int navId);
 

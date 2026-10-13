@@ -1,11 +1,14 @@
 #pragma once
+
 #include <wx/wx.h>
 #include <wx/listctrl.h>
+
+#include <vector>
+
 #include "ui/ClickableListCtrl.h"
 #include "models/User.h"
 #include "models/Part.h"
 #include "utils/TableExport.h"
-#include <vector>
 
 namespace remont {
 
@@ -18,10 +21,12 @@ private:
     void buildToolbar(wxSizer* root);
     void buildTable(wxSizer* root);
     void buildFooter(wxSizer* root);
+
     void loadParts();
     void loadActionIcons();
     void applyFilter();
     void refreshAlert();
+
     wxBitmap loadIcon(const wxString& path, int size);
 
     void onAddPart(wxCommandEvent& event);

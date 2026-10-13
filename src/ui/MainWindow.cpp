@@ -209,6 +209,7 @@ MainWindow::MainWindow(const User& user)
     backupTimer_.Start(60000);
 
     tryAutoBackup();
+    cleanupOldOrders();
 }
 
 MainWindow::~MainWindow() = default;
@@ -493,14 +494,19 @@ void MainWindow::printOrder(int orderId) {
     std::string fileName = "act_" + order.orderNumber + ".pdf";
     std::replace(fileName.begin(), fileName.end(), '#', '_');
 
-    std::string outputPath = std::string(
-        wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToUTF8().data())
-        + "/" + fileName;
+    wxString downloadsDir = wxStandardPaths::Get().GetUserDir(wxStandardPaths::Dir_Downloads);
+    if (downloadsDir.IsEmpty() || !wxFileName::DirExists(downloadsDir)) {
+        downloadsDir = wxFileName::GetHomeDir() + wxFILE_SEP_PATH + "Downloads";
+    }
+
+    wxString fullPath = downloadsDir + wxFILE_SEP_PATH + wxString::FromUTF8(fileName.c_str());
+    std::string outputPath = std::string(fullPath.ToUTF8().data());
 
     if (OrderService::instance().printAcceptanceAct(orderId, outputPath)) {
-        wxString msg = utf8::U("Акт сохранён:\n") + utf8::U(outputPath.c_str());
+        wxString msg = utf8::U("Акт сохранён:\n") + fullPath;
         wxMessageBox(msg, utf8::U("Печать акта"),
                      wxOK | wxICON_INFORMATION, this);
+        wxLaunchDefaultApplication(fullPath);
     } else {
         wxMessageBox(utf8::U("Не удалось сформировать PDF-акт"),
                      utf8::U("Ошибка"), wxOK | wxICON_ERROR, this);
@@ -549,6 +555,10 @@ void MainWindow::tryAutoBackup() {
             "Автоматическая резервная копия: " + std::string(nameBuf), "db", 0);
     } catch (...) {
     }
+}
+
+void MainWindow::cleanupOldOrders() {
+    OrderService::instance().cleanupOldIssuedOrders(7);
 }
 
 }

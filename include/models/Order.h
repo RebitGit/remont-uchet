@@ -15,6 +15,8 @@ struct Order {
     std::string receivedAt;
     std::string completedAt;
     std::string description;
+    double workCost  = 0.0;
+    double partsCost = 0.0;
     double totalCost = 0.0;
 
     std::string toString() const;

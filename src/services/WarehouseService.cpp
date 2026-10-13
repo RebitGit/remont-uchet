@@ -33,18 +33,18 @@ bool WarehouseService::writeOffPart(int partId, int quantity, int orderId, int u
         std::cerr << "[WRITEOFF] PartRepository::writeOff failed\n";
         return false;
     }
-    std::cerr << "[WRITEOFF] writeOff OK\n";
 
-    const char* sql =
-        "INSERT INTO part_usage(order_id, part_id, quantity) VALUES(?, ?, ?);";
-    sqlite3_stmt* stmt = nullptr;
     sqlite3* db = DatabaseManager::instance().handle();
     if (!db) {
         std::cerr << "[WRITEOFF] db is null\n";
         return false;
     }
 
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    const char* sqlInsert =
+        "INSERT INTO part_usage(order_id, part_id, quantity) VALUES(?, ?, ?);";
+    sqlite3_stmt* stmt = nullptr;
+
+    if (sqlite3_prepare_v2(db, sqlInsert, -1, &stmt, nullptr) != SQLITE_OK) {
         std::cerr << "[WRITEOFF] prepare failed: " << sqlite3_errmsg(db) << "\n";
         return false;
     }
@@ -58,16 +58,33 @@ bool WarehouseService::writeOffPart(int partId, int quantity, int orderId, int u
     sqlite3_bind_int(stmt, 3, quantity);
 
     int rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE) {
-        std::cerr << "[WRITEOFF] insert failed: rc=" << rc
-                  << " err=" << sqlite3_errmsg(db) << "\n";
-    } else {
-        std::cerr << "[WRITEOFF] insert OK\n";
-    }
-
     sqlite3_finalize(stmt);
 
-    if (rc != SQLITE_DONE) return false;
+    if (rc != SQLITE_DONE) {
+        std::cerr << "[WRITEOFF] insert failed\n";
+        return false;
+    }
+
+    if (orderId > 0) {
+        const char* sqlRecalc =
+            "UPDATE orders SET "
+            "parts_cost = (SELECT IFNULL(SUM(pu.quantity * p.price), 0) "
+            "              FROM part_usage pu JOIN parts p ON pu.part_id = p.id "
+            "              WHERE pu.order_id = ?), "
+            "total_cost = work_cost + (SELECT IFNULL(SUM(pu.quantity * p.price), 0) "
+            "                          FROM part_usage pu JOIN parts p ON pu.part_id = p.id "
+            "                          WHERE pu.order_id = ?) "
+            "WHERE id = ?;";
+
+        sqlite3_stmt* stmtRecalc = nullptr;
+        if (sqlite3_prepare_v2(db, sqlRecalc, -1, &stmtRecalc, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(stmtRecalc, 1, orderId);
+            sqlite3_bind_int(stmtRecalc, 2, orderId);
+            sqlite3_bind_int(stmtRecalc, 3, orderId);
+            sqlite3_step(stmtRecalc);
+            sqlite3_finalize(stmtRecalc);
+        }
+    }
 
     Logger::instance().log(userId,
         "Списание запчасти: " + part.name + " x" + std::to_string(quantity),

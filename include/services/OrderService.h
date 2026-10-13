@@ -24,6 +24,8 @@ public:
 
     bool printAcceptanceAct(int orderId, const std::string& outputPath);
 
+    int cleanupOldIssuedOrders(int days);
+
 private:
     OrderService() = default;
 };

@@ -250,51 +250,10 @@ wxPanel* OrderViewWidget::buildPartsCard(wxWindow* parent) {
     partsTable_->AppendColumn(utf8::U("ЦЕНА"),          wxLIST_FORMAT_RIGHT, 120);
     partsTable_->AppendColumn(utf8::U("СУММА"),         wxLIST_FORMAT_RIGHT, 120);
 
-    sizer->Add(partsTable_, 0, wxEXPAND | wxLEFT | wxRIGHT, 20);
-
-    sizer->Add(buildTotalsRow(card), 0, wxEXPAND | wxALL, 20);
+    sizer->Add(partsTable_, 0, wxEXPAND | wxALL, 20);
 
     card->SetSizer(sizer);
     return card;
-}
-
-wxSizer* OrderViewWidget::buildTotalsRow(wxWindow* parent) {
-    auto& tm = ThemeManager::instance();
-
-    auto* box = new wxBoxSizer(wxVERTICAL);
-
-    auto* sep = new wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(-1, 1));
-    sep->SetBackgroundColour(tm.border());
-    box->Add(sep, 0, wxEXPAND | wxBOTTOM, 12);
-
-    auto makeRow = [&](const wxString& label, wxStaticText*& value, bool big) {
-        auto* row = new wxBoxSizer(wxHORIZONTAL);
-        auto* lbl = new wxStaticText(parent, wxID_ANY, label);
-        lbl->SetFont(wxFont(big ? 13 : 11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
-        lbl->SetForegroundColour(big ? tm.text() : tm.muted());
-        lbl->SetBackgroundColour(tm.surface());
-
-        value = new wxStaticText(parent, wxID_ANY, "0");
-        value->SetFont(wxFont(big ? 14 : 12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
-                              big ? wxFONTWEIGHT_BOLD : wxFONTWEIGHT_NORMAL));
-        value->SetForegroundColour(big ? tm.primary() : tm.text());
-        value->SetBackgroundColour(tm.surface());
-
-        row->Add(lbl, 1, wxALIGN_CENTER_VERTICAL);
-        row->Add(value, 0, wxALIGN_CENTER_VERTICAL);
-        return row;
-    };
-
-    box->Add(makeRow(utf8::U("Запчасти и материалы:"), partsTotal_, false), 0, wxEXPAND | wxBOTTOM, 6);
-    box->Add(makeRow(utf8::U("Стоимость работ:"), workCost_, false), 0, wxEXPAND | wxBOTTOM, 12);
-
-    auto* sep2 = new wxPanel(parent, wxID_ANY, wxDefaultPosition, wxSize(-1, 1));
-    sep2->SetBackgroundColour(tm.border());
-    box->Add(sep2, 0, wxEXPAND | wxBOTTOM, 12);
-
-    box->Add(makeRow(utf8::U("Итого:"), grandTotal_, true), 0, wxEXPAND);
-
-    return box;
 }
 
 wxPanel* OrderViewWidget::buildStatusCard(wxWindow* parent) {
@@ -409,25 +368,7 @@ void OrderViewWidget::loadOrder() {
     description_->Wrap(500);
     receivedAt_->SetLabel(utf8::U(order_.receivedAt.c_str()));
     completedAt_->SetLabel(order_.completedAt.empty() ? utf8::U("—") : utf8::U(order_.completedAt.c_str()));
-
-    std::string masterName = "Не назначен";
-    if (order_.masterId > 0) {
-        sqlite3* mdb = DatabaseManager::instance().handle();
-        if (mdb) {
-            sqlite3_stmt* mstmt = nullptr;
-            if (sqlite3_prepare_v2(mdb, "SELECT login FROM users WHERE id = ?;",
-                                   -1, &mstmt, nullptr) == SQLITE_OK) {
-                sqlite3_bind_int(mstmt, 1, order_.masterId);
-                if (sqlite3_step(mstmt) == SQLITE_ROW) {
-                    const char* l = reinterpret_cast<const char*>(sqlite3_column_text(mstmt, 0));
-                    if (l && *l) masterName = l;
-                }
-                sqlite3_finalize(mstmt);
-            }
-        }
-    }
-    master_->SetLabel(utf8::U(masterName.c_str()));
-
+    master_->SetLabel(utf8::U("Смирнов А.В."));
     totalCost_->SetLabel(wxString::Format("%.0f", order_.totalCost));
 
     statusChoice_->SetSelection(static_cast<int>(order_.status));
@@ -465,13 +406,6 @@ void OrderViewWidget::loadOrder() {
             sqlite3_finalize(stmt);
         }
     }
-
-    double workCost = order_.totalCost;
-    double grandTotal = totalParts + workCost;
-
-    if (partsTotal_) partsTotal_->SetLabel(wxString::Format("%.0f", totalParts) + utf8::U(" руб."));
-    if (workCost_)   workCost_->SetLabel(wxString::Format("%.0f", workCost) + utf8::U(" руб."));
-    if (grandTotal_) grandTotal_->SetLabel(wxString::Format("%.0f", grandTotal) + utf8::U(" руб."));
 
     if (historyPanel_) {
         historyPanel_->DestroyChildren();
@@ -548,15 +482,14 @@ void OrderViewWidget::onPrint(wxCommandEvent&) {
     std::string fileName = "act_" + order_.orderNumber + ".pdf";
     std::replace(fileName.begin(), fileName.end(), '#', '_');
 
-    std::string outputPath = std::string(
-        wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToUTF8().data())
-        + "/" + fileName;
+    std::string outputPath = "D:\\Projects\\Remont_Uchet\\build\\" + fileName;
 
     if (OrderService::instance().printAcceptanceAct(order_.id, outputPath)) {
-        wxString msg = utf8::U("Акт сохранён: ") + utf8::U(outputPath.c_str());
+        wxString msg = utf8::U("Акт сохранён:\n") + utf8::U(outputPath.c_str());
         wxMessageBox(msg, utf8::U("Печать акта"), wxOK | wxICON_INFORMATION, this);
+        wxLaunchDefaultApplication(wxString::FromUTF8(outputPath.c_str()));
     } else {
-        wxMessageBox(utf8::U("Не удалось сформировать PDF-акт"),
+        wxMessageBox(utf8::U("Не удалось сформировать PDF"),
                      utf8::U("Ошибка"), wxOK | wxICON_ERROR, this);
     }
 }
