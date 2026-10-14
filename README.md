@@ -67,3 +67,36 @@
 
 ### Не проходит вход admin/admin
 Причина: БД повреждена. Удалить `data/remont_uchet.db` и запустить заново.
+
+## Документация
+
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Руководство разработчика](docs/DEVELOPER_GUIDE.md)
+- [Руководство пользователя](docs/USER_GUIDE.md)
+- [API](docs/API.md)
+- [Бэклог](BACKLOG.md)
+- [История изменений](CHANGELOG.md)
+- [SCRUM](SCRUM.md)
+
+## Стек
+
+C++17, SQLite, wxWidgets 3.3, libharu, CMake + Ninja, vcpkg, MinGW-w64 GCC 16.2.0, Google Test.
+
+## Структура
+
+- include/ — заголовки
+- src/ — реализации
+- tests/ — тесты
+- resources/ — иконки и шрифты
+- sql/ — схема БД
+- docs/ — документация
+
+## Сборка и запуск
+
+build.bat — сборка
+run.bat — запуск
+ctest --output-on-failure — тесты (в папке build)
+
+## Репозиторий
+
+https://github.com/RebitGit/remont-uchet
