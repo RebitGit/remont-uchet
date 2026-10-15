@@ -100,3 +100,7 @@ ctest --output-on-failure — тесты (в папке build)
 ## Репозиторий
 
 https://github.com/RebitGit/remont-uchet
+
+## Скачать
+
+Готовый архив: https://github.com/RebitGit/remont-uchet/releases/latest
